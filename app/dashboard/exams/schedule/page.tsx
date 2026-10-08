@@ -6,7 +6,7 @@ import { ScheduleView } from "@/components/exams/schedule-view"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Exam Schedule · United College",
+  title: "Exam Schedule",
 }
 
 export default function ExamSchedulePage() {

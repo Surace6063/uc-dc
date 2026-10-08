@@ -4,6 +4,45 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Landing page: notebook / classroom palette and fonts. */
+@theme inline {
+    --font-display: var(--font-display-serif), Georgia, serif;
+    --font-hand: var(--font-handwriting), cursive;
+    --color-paper: var(--paper);
+    --color-rule: var(--rule);
+    --color-margin: var(--margin);
+    --color-highlight: var(--highlight);
+    --color-lms: var(--lms);
+    --color-board: var(--board);
+    --color-chalk: var(--chalk);
+    --color-wood: var(--wood);
+}
+
+@theme {
+    --animate-marquee: marquee 50s linear infinite;
+
+    @keyframes marquee {
+        to {
+            transform: translateX(-50%);
+        }
+    }
+}
+
+/* Exercise-book ruling: one line every 32px. */
+@utility bg-ruled {
+    background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0 31px,
+        var(--rule) 31px 32px
+    );
+}
+
+/* Torn zig-zag bottom edge for receipts. */
+@utility receipt-edge {
+    mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg)
+        50% / 20px 100%;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);
@@ -80,9 +119,25 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --paper: oklch(0.985 0.012 85);
+    --rule: oklch(0.8 0.05 240 / 0.35);
+    --margin: oklch(0.65 0.17 25 / 0.45);
+    --highlight: oklch(0.93 0.14 100);
+    --lms: oklch(0.55 0.13 250);
+    --board: oklch(0.32 0.045 160);
+    --chalk: oklch(0.96 0.01 100);
+    --wood: oklch(0.52 0.08 55);
 }
 
 .dark {
+    --paper: oklch(0.17 0.012 260);
+    --rule: oklch(0.6 0.06 240 / 0.14);
+    --margin: oklch(0.65 0.15 25 / 0.3);
+    --highlight: oklch(0.6 0.12 95 / 0.45);
+    --lms: oklch(0.7 0.13 250);
+    --board: oklch(0.27 0.04 160);
+    --chalk: oklch(0.95 0.01 100);
+    --wood: oklch(0.42 0.07 55);
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);

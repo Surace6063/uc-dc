@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 
 export const metadata: Metadata = {
-  title: "Report Card Templates · United College",
+  title: "Report Card Templates",
 }
 
 // A miniature, abstract report card used as the template thumbnail.

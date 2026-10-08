@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { GrievanceTable } from "@/components/grievance/grievance-table"
 
 export const metadata: Metadata = {
-  title: "Grievance · United College",
+  title: "Grievance",
 }
 
 export default function GrievancePage() {

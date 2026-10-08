@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { EventTable } from "@/components/events/event-table"
 
 export const metadata: Metadata = {
-  title: "Events · United College",
+  title: "Events",
 }
 
 export default function EventsPage() {

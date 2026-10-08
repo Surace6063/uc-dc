@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import {
   ChevronsUpDownIcon,
@@ -23,6 +24,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+
+import { signOut } from "@/features/auth/actions"
 
 type User = { name: string; email: string }
 
@@ -68,6 +71,8 @@ export function UserMenuContent({
   side?: "bottom" | "right"
   align?: "start" | "end"
 }) {
+  const [signingOut, startTransition] = React.useTransition()
+
   return (
     <DropdownMenuContent
       side={side}
@@ -90,9 +95,13 @@ export function UserMenuContent({
         </DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
-      <DropdownMenuItem variant="destructive" render={<Link href="/login" />}>
+      <DropdownMenuItem
+        variant="destructive"
+        disabled={signingOut}
+        onClick={() => startTransition(() => signOut())}
+      >
         <LogOutIcon />
-        Log out
+        {signingOut ? "Logging out…" : "Log out"}
       </DropdownMenuItem>
     </DropdownMenuContent>
   )

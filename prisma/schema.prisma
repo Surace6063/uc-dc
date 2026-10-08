@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationType {
+  SCHOOL
+  COLLEGE
+  UNIVERSITY
+  INSTITUTE
+  OTHER
+}
+
+// Application-level profile for a Supabase Auth user. Credentials live in
+// Supabase (auth.users); this table never stores passwords.
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  authUserId String   @unique @map("auth_user_id") @db.Uuid
+  email      String   @unique
+  name       String?
+  avatarUrl  String?  @map("avatar_url")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  memberships   OrganizationMember[]
+  platformAdmin PlatformAdmin?
+
+  @@map("users")
+}
+
+// Platform (SaaS operator) access, kept separate from organisation roles:
+// no organisation role can ever grant it.
+model PlatformAdmin {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("platform_admins")
+}
+
+// A tenant: a school, college, university or institute.
+model Organization {
+  id        String           @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String           @unique
+  type      OrganizationType
+  country   String?
+  logoUrl   String?          @map("logo_url")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  roles   Role[]
+  members OrganizationMember[]
+
+  @@map("organizations")
+}
+
+// Roles are per organisation, so the same person can hold different roles
+// in different organisations, and organisations can define custom roles.
+model Role {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  description    String?
+  // Default roles created with the organisation (owner, admin, ...).
+  isSystem       Boolean  @default(false) @map("is_system")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions  RolePermission[]
+  members      OrganizationMember[]
+
+  @@unique([organizationId, slug])
+  // Lets memberships reference (role, organisation) together, so a member
+  // can never be given a role that belongs to a different organisation.
+  @@unique([id, organizationId])
+  @@map("roles")
+}
+
+// Global catalogue of granular permissions, e.g. "students.create".
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model OrganizationMember {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  roleId         String   @map("role_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Composite key: the role must belong to this same organisation.
+  role         Role         @relation(fields: [roleId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([roleId, organizationId])
+  @@map("organization_members")
+}

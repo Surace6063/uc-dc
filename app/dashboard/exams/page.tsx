@@ -4,7 +4,7 @@ import { ExamDataTable } from "@/components/exams/exam-data-table"
 import { PageHeader } from "@/components/exams/page-header"
 
 export const metadata: Metadata = {
-  title: "Exam List · United College",
+  title: "Exam List",
 }
 
 export default function ExamListPage() {

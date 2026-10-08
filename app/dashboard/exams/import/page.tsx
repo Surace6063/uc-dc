@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table"
 
 export const metadata: Metadata = {
-  title: "Import Historical Exams · United College",
+  title: "Import Historical Exams",
 }
 
 const steps = [

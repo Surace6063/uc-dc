@@ -4,8 +4,9 @@ import * as React from "react"
 import { BellIcon, CalendarRangeIcon, SearchIcon } from "lucide-react"
 
 import { ModeToggle } from "@/components/mode-toggle"
-import { academicYear, currentUser } from "@/components/nav-data"
+import { academicYear } from "@/components/navigation/nav-config"
 import { UserAvatar, UserMenuContent } from "@/components/nav-user"
+import { useSession } from "@/components/shared/session-provider"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -59,6 +60,8 @@ function HeaderSearch() {
 }
 
 export function DashboardHeader() {
+  const { user } = useSession()
+
   return (
     <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur">
       <SidebarTrigger className="-ml-1" />
@@ -96,9 +99,9 @@ export function DashboardHeader() {
             aria-label="Account menu"
             className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <UserAvatar user={currentUser} />
+            <UserAvatar user={user} />
           </DropdownMenuTrigger>
-          <UserMenuContent user={currentUser} />
+          <UserMenuContent user={user} />
         </DropdownMenu>
       </div>
     </header>

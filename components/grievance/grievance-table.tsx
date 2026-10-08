@@ -38,7 +38,7 @@ import {
   GrievanceFormDialog,
   type GrievanceFormValues,
 } from "@/components/grievance/grievance-form-dialog"
-import { currentUser } from "@/components/nav-data"
+import { useSession } from "@/components/shared/session-provider"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -125,7 +125,7 @@ async function exportPdf(rows: Grievance[]) {
   ])
   const doc = new jsPDF({ orientation: "landscape" })
   doc.setFontSize(14)
-  doc.text("Grievance List · United College", 14, 16)
+  doc.text("Grievance List", 14, 16)
   autoTable(doc, {
     startY: 22,
     head: [exportColumns.map((c) => c.label)],
@@ -137,6 +137,7 @@ async function exportPdf(rows: Grievance[]) {
 }
 
 export function GrievanceTable() {
+  const currentUser = useSession().user
   const [data, setData] = React.useState<Grievance[]>(initialGrievances)
   const [basis, setBasis] = React.useState("")
   const [appliedBasis, setAppliedBasis] = React.useState("")

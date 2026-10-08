@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/exams/page-header"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Assign Mark · United College",
+  title: "Assign Mark",
 }
 
 export default function AssignMarkPage() {
