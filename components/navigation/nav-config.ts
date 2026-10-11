@@ -15,6 +15,7 @@ import {
   FolderOpenIcon,
   GraduationCapIcon,
   HeartHandshakeIcon,
+  HouseHeartIcon,
   LayoutDashboardIcon,
   LayoutGridIcon,
   LibraryBigIcon,
@@ -38,9 +39,12 @@ export type NavItem = {
   title: string
   href: string
   icon: LucideIcon
-  // Shown only to users whose role has this permission. The page itself
-  // checks the same permission on the server.
-  permission: PermissionKey
+  // Shown only to users whose role has this permission (or any of these).
+  // The page itself checks the same permission on the server.
+  permission?: PermissionKey | readonly PermissionKey[]
+  // Shown to users linked to a guardian profile, whatever their role (a
+  // teacher can also be a parent). The page checks the link on the server.
+  guardianOnly?: true
 }
 
 export type NavGroup = { label: string; items: NavItem[] }
@@ -50,6 +54,7 @@ export const navGroups: NavGroup[] = [
     label: "Overview",
     items: [
       { title: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, permission: "dashboard.view" },
+      { title: "My Children", href: "/dashboard/family", icon: HouseHeartIcon, guardianOnly: true },
     ],
   },
   {
@@ -65,14 +70,14 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "Students", href: "/dashboard/students", icon: GraduationCapIcon, permission: "students.view" },
       { title: "Teachers", href: "/dashboard/teachers", icon: PresentationIcon, permission: "teachers.view" },
-      { title: "Staff", href: "/dashboard/staff", icon: BriefcaseIcon, permission: "staff.view" },
+      { title: "Staff", href: "/dashboard/staff", icon: BriefcaseIcon, permission: ["staff.view", "staff.view_department"] },
       { title: "Parents", href: "/dashboard/parents", icon: HeartHandshakeIcon, permission: "parents.view" },
     ],
   },
   {
     label: "Academics",
     items: [
-      { title: "Academics", href: "/dashboard/academics", icon: LibraryIcon, permission: "academics.view" },
+      { title: "Education Structure", href: "/dashboard/academics", icon: LibraryIcon, permission: "academics.view" },
       { title: "Classes & Sections", href: "/dashboard/classes", icon: LayoutGridIcon, permission: "classes.view" },
       { title: "Subjects & Courses", href: "/dashboard/subjects", icon: BookMarkedIcon, permission: "subjects.view" },
       { title: "Attendance", href: "/dashboard/attendance", icon: CalendarCheckIcon, permission: "attendance.view" },
@@ -133,14 +138,15 @@ export const navGroups: NavGroup[] = [
   },
 ]
 
-export function visibleNavGroups(permissions: readonly PermissionKey[]): NavGroup[] {
+export function visibleNavGroups(permissions: readonly PermissionKey[], options: { guardian?: boolean } = {}): NavGroup[] {
+  const allowed = (item: NavItem) => {
+    if (item.guardianOnly) return options.guardian === true
+    if (!item.permission) return false
+    return typeof item.permission === "string"
+      ? permissions.includes(item.permission)
+      : item.permission.some((p) => permissions.includes(p))
+  }
   return navGroups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => permissions.includes(item.permission)),
-    }))
+    .map((group) => ({ ...group, items: group.items.filter(allowed) }))
     .filter((group) => group.items.length > 0)
 }
-
-// TODO: load the organisation's active academic year.
-export const academicYear = { ad: 2026, bs: 2083 }

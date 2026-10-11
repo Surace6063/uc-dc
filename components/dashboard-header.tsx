@@ -4,7 +4,6 @@ import * as React from "react"
 import { BellIcon, CalendarRangeIcon, SearchIcon } from "lucide-react"
 
 import { ModeToggle } from "@/components/mode-toggle"
-import { academicYear } from "@/components/navigation/nav-config"
 import { UserAvatar, UserMenuContent } from "@/components/nav-user"
 import { useSession } from "@/components/shared/session-provider"
 import { Button } from "@/components/ui/button"
@@ -60,7 +59,7 @@ function HeaderSearch() {
 }
 
 export function DashboardHeader() {
-  const { user } = useSession()
+  const { user, academicYear } = useSession()
 
   return (
     <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur">
@@ -69,16 +68,13 @@ export function DashboardHeader() {
       <HeaderSearch />
 
       <div className="ml-auto flex items-center gap-1">
-        <div className="mr-2 hidden items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm whitespace-nowrap xl:flex">
-          <CalendarRangeIcon className="size-4 text-muted-foreground" />
-          <span className="text-muted-foreground">Academic year</span>
-          <span className="font-semibold tabular-nums">
-            {academicYear.ad}
-            <span className="ml-1 font-normal text-muted-foreground">
-              ({academicYear.bs} BS)
-            </span>
-          </span>
-        </div>
+        {academicYear && (
+          <div className="mr-2 hidden items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm whitespace-nowrap xl:flex">
+            <CalendarRangeIcon className="size-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Academic year</span>
+            <span className="font-semibold tabular-nums">{academicYear.name}</span>
+          </div>
+        )}
 
         <ModeToggle />
 

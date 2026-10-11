@@ -8,6 +8,8 @@ export type AppErrorCode =
   | "PERMISSION_DENIED"
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
+  | "CONFLICT"
+  | "SERVICE_UNAVAILABLE"
 
 export class AppError extends Error {
   constructor(
@@ -58,6 +60,21 @@ export class PermissionDeniedError extends AppError {
 export class NotFoundError extends AppError {
   constructor(message = "Not found.") {
     super("NOT_FOUND", message, 404)
+  }
+}
+
+// The request is valid but clashes with the current state (a duplicate
+// admission number, a record still in use, an invalid status transition).
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super("CONFLICT", message, 409)
+  }
+}
+
+// A dependency such as file storage isn't configured or reachable.
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string) {
+    super("SERVICE_UNAVAILABLE", message, 503)
   }
 }
 

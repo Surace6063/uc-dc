@@ -12,6 +12,10 @@ export type ClientSession = {
   role: { name: string; slug: string }
   permissions: readonly PermissionKey[]
   memberships: { organizationId: string; organizationName: string; roleName: string }[]
+  // The organisation's current academic year, if one is set.
+  academicYear: { name: string } | null
+  // The user is linked to a guardian profile here (shows the parent portal).
+  guardianPortal: boolean
 }
 
 const SessionContext = React.createContext<ClientSession | null>(null)

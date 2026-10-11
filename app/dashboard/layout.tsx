@@ -7,6 +7,8 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { getPageContext } from "@/lib/authorization/page"
+import { getCurrentAcademicYear } from "@/services/academics/structure-service"
+import { getGuardianAccountState } from "@/services/guardians/portal-service"
 import { listMemberships } from "@/services/organizations/organization-service"
 
 export default async function DashboardLayout({
@@ -17,7 +19,11 @@ export default async function DashboardLayout({
   // Signed out → /login; no organisation → /onboarding; several and none
   // chosen → /organizations/select. Pages still check their own permissions.
   const context = await getPageContext()
-  const memberships = await listMemberships(context.user.id)
+  const [memberships, academicYear, guardianState] = await Promise.all([
+    listMemberships(context.user.id),
+    getCurrentAcademicYear(context),
+    getGuardianAccountState(context),
+  ])
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"
 
@@ -40,6 +46,8 @@ export default async function DashboardLayout({
       organizationName,
       roleName,
     })),
+    academicYear: academicYear ? { name: academicYear.name } : null,
+    guardianPortal: guardianState !== "none",
   }
 
   return (

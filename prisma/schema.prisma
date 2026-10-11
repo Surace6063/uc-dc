@@ -1,6 +1,9 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../lib/generated/prisma"
+  // Partial unique indexes enforce "one current academic year" and "one
+  // active enrollment per year" in the database, not only in code.
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -26,8 +29,15 @@ model User {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  memberships   OrganizationMember[]
-  platformAdmin PlatformAdmin?
+  memberships      OrganizationMember[]
+  platformAdmin    PlatformAdmin?
+  // Optional portal links: a student or guardian record can be tied to the
+  // account that signs in for it (unique per organisation on those models).
+  studentProfiles  Student[]
+  guardianProfiles Guardian[]
+  teacherProfiles  Teacher[]
+  staffProfiles    Staff[]
+  auditLogs        AuditLog[]
 
   @@map("users")
 }
@@ -57,6 +67,47 @@ model Organization {
 
   roles   Role[]
   members OrganizationMember[]
+
+  // Education structure (configured per organisation).
+  faculties            Faculty[]
+  educationLevels      EducationLevel[]
+  programs             Program[]
+  academicClasses      AcademicClass[]
+  sections             Section[]
+  batches              Batch[]
+  academicYears        AcademicYear[]
+  documentRequirements DocumentRequirement[]
+  studentSettings      StudentSettings?
+  subjects             Subject[]
+  designations         Designation[]
+  staffSettings        StaffSettings?
+
+  // Students.
+  students             Student[]
+  guardians            Guardian[]
+  studentGuardians     StudentGuardian[]
+  guardianInvitations  GuardianInvitation[]
+  enrollments          Enrollment[]
+  studentDocuments     StudentDocument[]
+  studentStatusHistory StudentStatusHistory[]
+
+  // Teachers.
+  teachers                 Teacher[]
+  teacherEmploymentRecords TeacherEmploymentRecord[]
+  teacherQualifications    TeacherQualification[]
+  teacherCertifications    TeacherCertification[]
+  teacherDocuments         TeacherDocument[]
+  teacherAssignments       TeacherAssignment[]
+
+  // Non-teaching staff.
+  departments            Department[]
+  staff                  Staff[]
+  staffEmploymentRecords StaffEmploymentRecord[]
+  staffQualifications    StaffQualification[]
+  staffDocuments         StaffDocument[]
+  staffAssignments       StaffAssignment[]
+
+  auditLogs AuditLog[]
 
   @@map("organizations")
 }
@@ -127,4 +178,1370 @@ model OrganizationMember {
   @@index([organizationId])
   @@index([roleId, organizationId])
   @@map("organization_members")
+}
+
+// =============================================================== education
+//
+// Every organisation configures its own structure; nothing here is hardcoded
+// for a particular kind of institution. All organisation-owned tables carry
+// organization_id, and child records reference their parents through
+// composite (id, organization_id) keys, so the database itself refuses a
+// program, class or enrollment that points into another organisation.
+
+// How an organisation's classes are named and ordered within a level.
+enum GroupingKind {
+  GRADE
+  SEMESTER
+  YEAR
+  LEVEL
+  COHORT
+  OTHER
+}
+
+enum AcademicYearStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum NumberingMode {
+  MANUAL
+  AUTOMATIC
+}
+
+// Optional: Faculty of Management, Department of Science, ...
+model Faculty {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  code           String
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  programs     Program[]
+  // Also used as the teacher's department.
+  teachers     Teacher[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@map("faculties")
+}
+
+// ECD, Basic, Secondary, +2, Bachelor's, ... (presets are only a starting point).
+model EducationLevel {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String
+  code           String
+  // Which preset this was created from, if any (see education presets).
+  presetKey      String?      @map("preset_key")
+  description    String?
+  groupingKind   GroupingKind @default(GRADE) @map("grouping_kind")
+  // Levels such as +2 or Bachelor's place students in a program; schools don't.
+  usesPrograms   Boolean      @default(false) @map("uses_programs")
+  isActive       Boolean      @default(true) @map("is_active")
+  sortOrder      Int          @default(0) @map("sort_order")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  programs             Program[]
+  classes              AcademicClass[]
+  enrollments          Enrollment[]
+  documentRequirements DocumentRequirement[]
+  subjects             Subject[]
+  teacherAssignments   TeacherAssignment[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, sortOrder])
+  @@map("education_levels")
+}
+
+// Science, Management, BBS, BCA, Diploma in Computer Engineering, ...
+model Program {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  educationLevelId String   @map("education_level_id") @db.Uuid
+  facultyId        String?  @map("faculty_id") @db.Uuid
+  name             String
+  code             String
+  description      String?
+  // Length in the level's grouping unit (e.g. 8 semesters, 4 years).
+  duration         Int?
+  isActive         Boolean  @default(true) @map("is_active")
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel     EducationLevel      @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  faculty            Faculty?            @relation(fields: [facultyId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  classes            AcademicClass[]
+  batches            Batch[]
+  enrollments        Enrollment[]
+  subjects           Subject[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, educationLevelId])
+  @@map("programs")
+}
+
+// Grade 1, Grade 11, Semester 3, Year 2, ... A class belongs to a level and,
+// for levels that use programs, to one program.
+model AcademicClass {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  educationLevelId String       @map("education_level_id") @db.Uuid
+  programId        String?      @map("program_id") @db.Uuid
+  name             String
+  kind             GroupingKind @default(GRADE)
+  // Position within the level/program; drives "promote to next class".
+  sequence         Int          @default(1)
+  isActive         Boolean      @default(true) @map("is_active")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel     EducationLevel      @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program            Program?            @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  sections           Section[]
+  enrollments        Enrollment[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([id, organizationId])
+  // Class names are unique within their level (no program) or program.
+  @@unique([educationLevelId, name], map: "academic_classes_level_name_key", where: raw("program_id IS NULL"))
+  @@unique([programId, name], map: "academic_classes_program_name_key", where: raw("program_id IS NOT NULL"))
+  @@index([organizationId, educationLevelId, programId, sequence])
+  @@map("academic_classes")
+}
+
+// A, B, Morning, Evening, ... within one class.
+model Section {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  name           String
+  capacity       Int?
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class              AcademicClass       @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  enrollments        Enrollment[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([classId, name])
+  @@unique([id, organizationId])
+  // Lets an enrollment reference (section, class) together, so its section
+  // always belongs to its class.
+  @@unique([id, classId])
+  @@map("sections")
+}
+
+// Optional intake groups such as "Batch 2026".
+model Batch {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  programId      String?  @map("program_id") @db.Uuid
+  name           String
+  startYear      Int?     @map("start_year")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  program            Program?            @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  enrollments        Enrollment[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@map("batches")
+}
+
+model AcademicYear {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  // Free text so organisations can use BS ("2082/83"), AD or both.
+  name           String
+  startDate      DateTime           @map("start_date") @db.Date
+  endDate        DateTime           @map("end_date") @db.Date
+  status         AcademicYearStatus @default(PLANNED)
+  // The year new admissions and the students list default to.
+  isCurrent      Boolean            @default(false) @map("is_current")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  enrollments        Enrollment[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@unique([organizationId], map: "academic_years_one_current_key", where: raw("is_current"))
+  @@map("academic_years")
+}
+
+enum DocumentAudience {
+  STUDENT
+  TEACHER
+  STAFF
+}
+
+// Documents an organisation asks students (or teachers) to submit.
+model DocumentRequirement {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  // Who submits it. Existing rows are student requirements.
+  audience         DocumentAudience @default(STUDENT)
+  // Null: applies to every student (always null for teacher documents).
+  educationLevelId String?          @map("education_level_id") @db.Uuid
+  name             String
+  description      String?
+  isRequired       Boolean          @default(true) @map("is_required")
+  isActive         Boolean          @default(true) @map("is_active")
+  sortOrder        Int              @default(0) @map("sort_order")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel   EducationLevel?   @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  documents        StudentDocument[]
+  teacherDocuments TeacherDocument[]
+  staffDocuments   StaffDocument[]
+
+  @@unique([organizationId, audience, name])
+  @@unique([id, organizationId])
+  @@map("document_requirements")
+}
+
+// Per-organisation admission (and guardian ID) numbering rules.
+model StudentSettings {
+  organizationId         String        @id @map("organization_id") @db.Uuid
+  admissionNumberMode    NumberingMode @default(AUTOMATIC) @map("admission_number_mode")
+  admissionNumberPrefix  String        @default("ADM-") @map("admission_number_prefix")
+  admissionNumberPadding Int           @default(5) @map("admission_number_padding")
+  // Next value to hand out; incremented atomically (UPDATE ... RETURNING).
+  nextAdmissionSequence  Int           @default(1) @map("next_admission_sequence")
+  rollNumberMode         NumberingMode @default(AUTOMATIC) @map("roll_number_mode")
+  // Guardian IDs share the padding above; numbers taken by hand are skipped.
+  guardianCodePrefix     String        @default("GRD-") @map("guardian_code_prefix")
+  nextGuardianSequence   Int           @default(1) @map("next_guardian_sequence")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("student_settings")
+}
+
+// ================================================================ students
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// Lifecycle of the person at this institution. Archiving is separate
+// (archived_at): it hides a record without changing what happened.
+enum StudentStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+  TRANSFERRED
+  GRADUATED
+}
+
+enum AdmissionType {
+  NEW
+  TRANSFER
+  READMISSION
+  LATERAL_ENTRY
+}
+
+enum AddressType {
+  PERMANENT
+  TEMPORARY
+}
+
+enum GuardianRelationship {
+  FATHER
+  MOTHER
+  GRANDFATHER
+  GRANDMOTHER
+  BROTHER
+  SISTER
+  UNCLE
+  AUNT
+  SPOUSE
+  LEGAL_GUARDIAN
+  OTHER
+}
+
+enum EnrollmentType {
+  NEW_ADMISSION
+  PROMOTION
+  REPEAT
+  TRANSFER
+  READMISSION
+  LATERAL_ENTRY
+}
+
+// ACTIVE/ON_HOLD are open placements; everything else is closed history.
+enum EnrollmentStatus {
+  ACTIVE
+  ON_HOLD
+  PROMOTED
+  COMPLETED
+  DETAINED
+  TRANSFERRED
+  WITHDRAWN
+  CANCELLED
+}
+
+enum StudentHistoryAction {
+  CREATED
+  STATUS_CHANGED
+  ARCHIVED
+  RESTORED
+}
+
+// A student's persistent identity. Academic placement lives in Enrollment.
+model Student {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @map("organization_id") @db.Uuid
+  admissionNumber  String        @map("admission_number")
+  firstName        String        @map("first_name")
+  middleName       String?       @map("middle_name")
+  lastName         String        @map("last_name")
+  dateOfBirth      DateTime?     @map("date_of_birth") @db.Date
+  gender           Gender?
+  nationality      String?
+  // Path in the private storage bucket, never a public URL.
+  profileImagePath String?       @map("profile_image_path")
+  email            String?
+  phone            String?
+  alternatePhone   String?       @map("alternate_phone")
+  bloodGroup       String?       @map("blood_group")
+  motherTongue     String?       @map("mother_tongue")
+  // Restricted: only roles with students.sensitive.view can read it.
+  medicalNotes     String?       @map("medical_notes")
+  previousSchool   String?       @map("previous_school")
+  admissionDate    DateTime      @map("admission_date") @db.Date
+  admissionType    AdmissionType @default(NEW) @map("admission_type")
+  status           StudentStatus @default(ACTIVE)
+  // Portal account for this student, if any.
+  userId           String?       @map("user_id") @db.Uuid
+  archivedAt       DateTime?     @map("archived_at")
+  archivedById     String?       @map("archived_by_id") @db.Uuid
+  createdById      String?       @map("created_by_id") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user          User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  addresses     StudentAddress[]
+  guardians     StudentGuardian[]
+  enrollments   Enrollment[]
+  documents     StudentDocument[]
+  statusHistory StudentStatusHistory[]
+
+  @@unique([organizationId, admissionNumber])
+  @@unique([id, organizationId])
+  @@unique([organizationId, userId])
+  @@index([organizationId, status, archivedAt])
+  @@index([organizationId, lastName, firstName])
+  @@index([organizationId, admissionDate])
+  @@index([organizationId, createdAt])
+  @@map("students")
+}
+
+// Nepal address: province (1–7) → district → municipality → ward → tole.
+model StudentAddress {
+  id           String      @id @default(uuid()) @db.Uuid
+  studentId    String      @map("student_id") @db.Uuid
+  type         AddressType
+  province     Int?
+  district     String?
+  municipality String?
+  wardNumber   Int?        @map("ward_number")
+  tole         String?
+  street       String?
+  postalCode   String?     @map("postal_code")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, type])
+  @@index([province, district])
+  @@map("student_addresses")
+}
+
+// How a guardian prefers to be reached. Many guardians in Nepal rarely use
+// email, so phone, SMS and messaging apps come first.
+enum ContactMethod {
+  PHONE
+  SMS
+  VIBER
+  WHATSAPP
+  EMAIL
+  IN_PERSON
+}
+
+// Parent-portal access. A guardian profile is never an account by itself:
+// NONE -> INVITED (invitation sent) -> ACTIVE (account linked) <-> DISABLED.
+enum GuardianPortalStatus {
+  NONE
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+// Expiry is not a status: a PENDING invitation past expires_at is expired.
+enum GuardianInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+// A parent or guardian. One guardian can be linked to several students and
+// one student to several guardians (StudentGuardian). The login account
+// (userId) is optional and separate; passwords live only in Supabase Auth.
+model Guardian {
+  id                     String               @id @default(uuid()) @db.Uuid
+  organizationId         String               @map("organization_id") @db.Uuid
+  // Institution identifier (GRD-00001), generated unless entered by hand.
+  guardianCode           String?              @map("guardian_code")
+  fullName               String               @map("full_name")
+  gender                 Gender?
+  // Restricted (parents.sensitive.view): date of birth and home addresses.
+  dateOfBirth            DateTime?            @map("date_of_birth") @db.Date
+  phone                  String?
+  alternatePhone         String?              @map("alternate_phone")
+  email                  String?
+  occupation             String?
+  workplace              String?
+  nationality            String?
+  // Path in the private storage bucket, never a public URL.
+  profileImagePath       String?              @map("profile_image_path")
+  // Free-text address from quick entry (admission form); the structured
+  // address lives in GuardianAddress.
+  address                String?
+  preferredLanguage      String?              @map("preferred_language")
+  preferredContactMethod ContactMethod?       @map("preferred_contact_method")
+  portalStatus           GuardianPortalStatus @default(NONE) @map("portal_status")
+  userId                 String?              @map("user_id") @db.Uuid
+  archivedAt             DateTime?            @map("archived_at")
+  archivedById           String?              @map("archived_by_id") @db.Uuid
+  createdById            String?              @map("created_by_id") @db.Uuid
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  students     StudentGuardian[]
+  addresses    GuardianAddress[]
+  invitations  GuardianInvitation[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, userId])
+  @@unique([organizationId, guardianCode])
+  @@index([organizationId, phone])
+  @@index([organizationId, fullName])
+  @@index([organizationId, archivedAt])
+  @@index([organizationId, portalStatus])
+  @@index([organizationId, createdAt])
+  @@map("guardians")
+}
+
+// Nepal address: province (1-7) -> district -> municipality -> ward -> tole.
+model GuardianAddress {
+  id           String      @id @default(uuid()) @db.Uuid
+  guardianId   String      @map("guardian_id") @db.Uuid
+  type         AddressType
+  province     Int?
+  district     String?
+  municipality String?
+  wardNumber   Int?        @map("ward_number")
+  tole         String?
+  street       String?
+  postalCode   String?     @map("postal_code")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  @@unique([guardianId, type])
+  @@map("guardian_addresses")
+}
+
+// One guardian's relationship to one student, with its own contact roles,
+// notification preferences and portal permission. Nothing here is implied by
+// the guardian profile alone: portal access to a child needs
+// can_access_student_portal_data on this link.
+model StudentGuardian {
+  studentId                       String               @map("student_id") @db.Uuid
+  guardianId                      String               @map("guardian_id") @db.Uuid
+  organizationId                  String               @map("organization_id") @db.Uuid
+  relationship                    GuardianRelationship
+  isPrimary                       Boolean              @default(false) @map("is_primary")
+  isEmergencyContact              Boolean              @default(false) @map("is_emergency_contact")
+  canPickupStudent                Boolean              @default(false) @map("can_pickup_student")
+  receivesAcademicNotifications   Boolean              @default(true) @map("receives_academic_notifications")
+  receivesAttendanceNotifications Boolean              @default(true) @map("receives_attendance_notifications")
+  // Fee notices; also what lets a guardian see fee details in the portal.
+  receivesBillingNotifications    Boolean              @default(false) @map("receives_billing_notifications")
+  receivesGeneralAnnouncements    Boolean              @default(true) @map("receives_general_announcements")
+  canAccessStudentPortalData      Boolean              @default(false) @map("can_access_student_portal_data")
+  notes                           String?
+  createdAt                       DateTime             @default(now()) @map("created_at")
+  updatedAt                       DateTime             @default(now()) @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Both sides share organization_id, so a link can never cross tenants.
+  student      Student      @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  guardian     Guardian     @relation(fields: [guardianId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  // The composite key also means a guardian is linked to a student at most once.
+  @@id([studentId, guardianId])
+  @@unique([studentId], map: "student_guardians_one_primary_key", where: raw("is_primary"))
+  @@index([guardianId])
+  @@index([organizationId])
+  @@map("student_guardians")
+}
+
+// An invitation for a guardian to link a login account. Only a SHA-256 hash
+// of the token is stored; the link is shown once to the person who created
+// it. Accepting requires signing in with the invited email address.
+model GuardianInvitation {
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @map("organization_id") @db.Uuid
+  guardianId     String                   @map("guardian_id") @db.Uuid
+  email          String
+  tokenHash      String                   @unique @map("token_hash")
+  status         GuardianInvitationStatus @default(PENDING)
+  expiresAt      DateTime                 @map("expires_at")
+  invitedById    String?                  @map("invited_by_id") @db.Uuid
+  acceptedAt     DateTime?                @map("accepted_at")
+  acceptedUserId String?                  @map("accepted_user_id") @db.Uuid
+  revokedAt      DateTime?                @map("revoked_at")
+  revokedById    String?                  @map("revoked_by_id") @db.Uuid
+  createdAt      DateTime                 @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  guardian     Guardian     @relation(fields: [guardianId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  // At most one open invitation per guardian.
+  @@unique([guardianId], map: "guardian_invitations_one_pending_key", where: raw("status = 'PENDING'"))
+  @@index([organizationId, status, expiresAt])
+  @@map("guardian_invitations")
+}
+
+// A student's placement in one academic context. Progressing to another
+// class or year closes this row and creates a new one; rows are never
+// rewritten into a different placement, so history is preserved.
+model Enrollment {
+  id                   String           @id @default(uuid()) @db.Uuid
+  organizationId       String           @map("organization_id") @db.Uuid
+  studentId            String           @map("student_id") @db.Uuid
+  academicYearId       String           @map("academic_year_id") @db.Uuid
+  // Level and program are copied from the class (server-side) for filtering.
+  educationLevelId     String           @map("education_level_id") @db.Uuid
+  programId            String?          @map("program_id") @db.Uuid
+  classId              String           @map("class_id") @db.Uuid
+  sectionId            String?          @map("section_id") @db.Uuid
+  batchId              String?          @map("batch_id") @db.Uuid
+  rollNumber           String?          @map("roll_number")
+  enrollmentDate       DateTime         @map("enrollment_date") @db.Date
+  enrollmentType       EnrollmentType   @default(NEW_ADMISSION) @map("enrollment_type")
+  status               EnrollmentStatus @default(ACTIVE)
+  endedOn              DateTime?        @map("ended_on") @db.Date
+  statusReason         String?          @map("status_reason")
+  previousEnrollmentId String?          @unique @map("previous_enrollment_id") @db.Uuid
+  createdById          String?          @map("created_by_id") @db.Uuid
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student            Student        @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  academicYear       AcademicYear   @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  educationLevel     EducationLevel @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program            Program?       @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class              AcademicClass  @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  section            Section?       @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  batch              Batch?         @relation(fields: [batchId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  previousEnrollment Enrollment?    @relation("EnrollmentProgression", fields: [previousEnrollmentId], references: [id], onDelete: SetNull)
+  nextEnrollment     Enrollment?    @relation("EnrollmentProgression")
+
+  // At most one ACTIVE placement per student per academic year.
+  @@unique([studentId, academicYearId], map: "enrollments_one_active_per_year_key", where: raw("status = 'ACTIVE'"))
+  // Roll numbers are unique among active placements of a class/section.
+  @@unique([academicYearId, classId, sectionId, rollNumber], map: "enrollments_roll_number_key", where: raw("status = 'ACTIVE' AND roll_number IS NOT NULL"))
+  // Same rule for classes without sections (NULLs never collide in the index above).
+  @@unique([academicYearId, classId, rollNumber], map: "enrollments_roll_number_no_section_key", where: raw("status = 'ACTIVE' AND roll_number IS NOT NULL AND section_id IS NULL"))
+  @@index([organizationId, academicYearId, status])
+  @@index([organizationId, educationLevelId])
+  @@index([organizationId, programId])
+  @@index([organizationId, classId, sectionId])
+  @@index([studentId, enrollmentDate])
+  @@map("enrollments")
+}
+
+// File metadata; the file itself lives in a private storage bucket.
+model StudentDocument {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  studentId      String   @map("student_id") @db.Uuid
+  requirementId  String?  @map("requirement_id") @db.Uuid
+  title          String
+  fileName       String   @map("file_name")
+  mimeType       String   @map("mime_type")
+  sizeBytes      Int      @map("size_bytes")
+  storagePath    String   @unique @map("storage_path")
+  uploadedById   String?  @map("uploaded_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student              @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  // Plain FK so deleting a requirement only clears this column (the service
+  // checks the requirement belongs to the same organisation).
+  requirement  DocumentRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, studentId])
+  @@index([requirementId])
+  @@map("student_documents")
+}
+
+model StudentStatusHistory {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  studentId      String               @map("student_id") @db.Uuid
+  action         StudentHistoryAction
+  fromStatus     StudentStatus?       @map("from_status")
+  toStatus       StudentStatus?       @map("to_status")
+  reason         String?
+  changedById    String?              @map("changed_by_id") @db.Uuid
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([studentId, createdAt])
+  @@map("student_status_history")
+}
+
+// Append-only record of who changed what, per organisation.
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  // e.g. "student.create", "enrollment.promote", "academic_year.set_current"
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String?  @map("entity_id") @db.Uuid
+  summary        String
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+// ================================================================ teachers
+//
+// A teacher is an organisation-specific profile, separate from the login
+// account (User), which can be linked optionally. Employment, qualifications,
+// certifications, documents and teaching assignments are separate records so
+// their history is kept. Salary and payroll belong to the finance module and
+// are deliberately not stored here.
+
+enum TeacherEmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  VISITING
+  OTHER
+}
+
+// Employment lifecycle. Archiving (archived_at) is separate.
+enum TeacherEmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RESIGNED
+  TERMINATED
+  RETIRED
+  CONTRACT_EXPIRED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// Broad tiers only; the exact degree (M.Ed., B.Sc., ...) is free text.
+enum QualificationLevel {
+  SECONDARY
+  HIGHER_SECONDARY
+  DIPLOMA
+  BACHELOR
+  MASTER
+  MPHIL
+  DOCTORATE
+  PROFESSIONAL
+  OTHER
+}
+
+enum TeacherDocumentCategory {
+  CV
+  ACADEMIC_CERTIFICATE
+  TRAINING_CERTIFICATE
+  APPOINTMENT_LETTER
+  CONTRACT
+  EXPERIENCE_LETTER
+  IDENTITY
+  OTHER
+}
+
+enum TeachingRole {
+  SUBJECT_TEACHER
+  CLASS_TEACHER
+  CO_TEACHER
+  OTHER
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+// Subjects and courses, optionally tied to a level or program. A minimal
+// catalogue for teaching assignments; the Subjects/LMS modules extend it.
+model Subject {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  educationLevelId String?  @map("education_level_id") @db.Uuid
+  programId        String?  @map("program_id") @db.Uuid
+  name             String
+  code             String
+  creditHours      Int?     @map("credit_hours")
+  isActive         Boolean  @default(true) @map("is_active")
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel EducationLevel?     @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program        Program?            @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  assignments    TeacherAssignment[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, educationLevelId, programId])
+  @@map("subjects")
+}
+
+// Who a designation is offered to. A job title is never a permission.
+enum DesignationScope {
+  ALL
+  TEACHING
+  NON_TEACHING
+}
+
+// Broad grouping for reporting and filters; the titles themselves are free.
+enum JobCategory {
+  ADMINISTRATION
+  FINANCE
+  FRONT_OFFICE
+  LIBRARY
+  LABORATORY
+  IT
+  STUDENT_SERVICES
+  EXAMINATION
+  TRANSPORT
+  HOSTEL
+  HEALTH
+  SECURITY
+  FACILITIES
+  TEACHING
+  OTHER
+}
+
+// Configurable job titles shared by teachers and staff: Teacher, Lecturer,
+// Accountant, Librarian, Driver, ...
+model Designation {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  name           String
+  scope          DesignationScope @default(ALL)
+  category       JobCategory?
+  // Usual department for this title (staff departments only); optional.
+  departmentId   String?          @map("department_id") @db.Uuid
+  isActive       Boolean          @default(true) @map("is_active")
+  sortOrder      Int              @default(0) @map("sort_order")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [departmentId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  teachers     Teacher[]
+  staff        Staff[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@map("designations")
+}
+
+// Per-organisation employee ID rules.
+model StaffSettings {
+  organizationId       String        @id @map("organization_id") @db.Uuid
+  employeeIdMode       NumberingMode @default(AUTOMATIC) @map("employee_id_mode")
+  employeeIdPrefix     String        @default("EMP-") @map("employee_id_prefix")
+  employeeIdPadding    Int           @default(4) @map("employee_id_padding")
+  // Next value to hand out; incremented atomically (UPDATE ... RETURNING).
+  nextEmployeeSequence Int           @default(1) @map("next_employee_sequence")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("staff_settings")
+}
+
+model Teacher {
+  id                           String    @id @default(uuid()) @db.Uuid
+  organizationId               String    @map("organization_id") @db.Uuid
+  // Login account, if the teacher has one (must be a member of this organisation).
+  userId                       String?   @map("user_id") @db.Uuid
+  employeeId                   String    @map("employee_id")
+  firstName                    String    @map("first_name")
+  middleName                   String?   @map("middle_name")
+  lastName                     String    @map("last_name")
+  // Full name in Devanagari, for institutions that keep bilingual records.
+  nameNepali                   String?   @map("name_nepali")
+  // Restricted (teachers.sensitive.view): date of birth, addresses, emergency contact.
+  dateOfBirth                  DateTime? @map("date_of_birth") @db.Date
+  gender                       Gender?
+  nationality                  String?
+  profileImagePath             String?   @map("profile_image_path")
+  email                        String?
+  phone                        String?
+  alternatePhone               String?   @map("alternate_phone")
+  emergencyContactName         String?   @map("emergency_contact_name")
+  emergencyContactPhone        String?   @map("emergency_contact_phone")
+  emergencyContactRelationship String?   @map("emergency_contact_relationship")
+
+  // Current employment. Every change is also recorded in TeacherEmploymentRecord.
+  dateOfJoining     DateTime                @map("date_of_joining") @db.Date
+  employmentType    TeacherEmploymentType   @default(FULL_TIME) @map("employment_type")
+  employmentStatus  TeacherEmploymentStatus @default(ACTIVE) @map("employment_status")
+  designationId     String?                 @map("designation_id") @db.Uuid
+  departmentId      String?                 @map("department_id") @db.Uuid
+  reportingToId     String?                 @map("reporting_to_id") @db.Uuid
+  contractStartDate DateTime?               @map("contract_start_date") @db.Date
+  contractEndDate   DateTime?               @map("contract_end_date") @db.Date
+  onProbation       Boolean                 @default(false) @map("on_probation")
+  probationEndDate  DateTime?               @map("probation_end_date") @db.Date
+  employmentNotes   String?                 @map("employment_notes")
+
+  archivedAt   DateTime? @map("archived_at")
+  archivedById String?   @map("archived_by_id") @db.Uuid
+  createdById  String?   @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  designation       Designation?              @relation(fields: [designationId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  department        Faculty?                  @relation(fields: [departmentId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  // Plain FK: removing a manager clears the link (same organisation is checked in code).
+  reportingTo       Teacher?                  @relation("TeacherReporting", fields: [reportingToId], references: [id], onDelete: SetNull)
+  reports           Teacher[]                 @relation("TeacherReporting")
+  addresses         TeacherAddress[]
+  employmentRecords TeacherEmploymentRecord[]
+  qualifications    TeacherQualification[]
+  certifications    TeacherCertification[]
+  documents         TeacherDocument[]
+  assignments       TeacherAssignment[]
+
+  @@unique([organizationId, employeeId])
+  @@unique([id, organizationId])
+  @@unique([organizationId, userId])
+  @@index([organizationId, employmentStatus, archivedAt])
+  @@index([organizationId, lastName, firstName])
+  @@index([organizationId, dateOfJoining])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, designationId])
+  @@map("teachers")
+}
+
+model TeacherAddress {
+  id           String      @id @default(uuid()) @db.Uuid
+  teacherId    String      @map("teacher_id") @db.Uuid
+  type         AddressType
+  province     Int?
+  district     String?
+  municipality String?
+  wardNumber   Int?        @map("ward_number")
+  tole         String?
+  street       String?
+  postalCode   String?     @map("postal_code")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, type])
+  @@map("teacher_addresses")
+}
+
+// Append-only employment history: one row per change, with names copied so
+// renaming or removing a designation never rewrites history.
+model TeacherEmploymentRecord {
+  id                String                  @id @default(uuid()) @db.Uuid
+  organizationId    String                  @map("organization_id") @db.Uuid
+  teacherId         String                  @map("teacher_id") @db.Uuid
+  effectiveDate     DateTime                @map("effective_date") @db.Date
+  employmentType    TeacherEmploymentType   @map("employment_type")
+  employmentStatus  TeacherEmploymentStatus @map("employment_status")
+  designationName   String?                 @map("designation_name")
+  departmentName    String?                 @map("department_name")
+  contractStartDate DateTime?               @map("contract_start_date") @db.Date
+  contractEndDate   DateTime?               @map("contract_end_date") @db.Date
+  onProbation       Boolean                 @default(false) @map("on_probation")
+  note              String?
+  changedById       String?                 @map("changed_by_id") @db.Uuid
+  createdAt         DateTime                @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher      Teacher      @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([teacherId, effectiveDate])
+  @@map("teacher_employment_records")
+}
+
+model TeacherQualification {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @map("organization_id") @db.Uuid
+  teacherId          String             @map("teacher_id") @db.Uuid
+  level              QualificationLevel
+  // e.g. "M.Ed. in Mathematics Education", "B.Sc. CSIT"
+  title              String
+  specialization     String?
+  institutionName    String?            @map("institution_name")
+  awardingBody       String?            @map("awarding_body")
+  country            String?
+  completionYear     Int?               @map("completion_year")
+  // Grade, GPA or percentage as written on the certificate.
+  result             String?
+  documentId         String?            @map("document_id") @db.Uuid
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?          @map("verified_at")
+  verifiedById       String?            @map("verified_by_id") @db.Uuid
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher      Teacher          @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  document     TeacherDocument? @relation("QualificationDocument", fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, level])
+  @@index([teacherId])
+  @@map("teacher_qualifications")
+}
+
+model TeacherCertification {
+  id                  String             @id @default(uuid()) @db.Uuid
+  organizationId      String             @map("organization_id") @db.Uuid
+  teacherId           String             @map("teacher_id") @db.Uuid
+  name                String
+  issuingOrganization String?            @map("issuing_organization")
+  issueDate           DateTime?          @map("issue_date") @db.Date
+  expiryDate          DateTime?          @map("expiry_date") @db.Date
+  reference           String?
+  documentId          String?            @map("document_id") @db.Uuid
+  verificationStatus  VerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt          DateTime?          @map("verified_at")
+  verifiedById        String?            @map("verified_by_id") @db.Uuid
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher      Teacher          @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  document     TeacherDocument? @relation("CertificationDocument", fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([teacherId])
+  @@map("teacher_certifications")
+}
+
+model TeacherDocument {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  organizationId     String                  @map("organization_id") @db.Uuid
+  teacherId          String                  @map("teacher_id") @db.Uuid
+  category           TeacherDocumentCategory
+  requirementId      String?                 @map("requirement_id") @db.Uuid
+  title              String
+  fileName           String                  @map("file_name")
+  mimeType           String                  @map("mime_type")
+  sizeBytes          Int                     @map("size_bytes")
+  storagePath        String                  @unique @map("storage_path")
+  verificationStatus VerificationStatus      @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?               @map("verified_at")
+  verifiedById       String?                 @map("verified_by_id") @db.Uuid
+  uploadedById       String?                 @map("uploaded_by_id") @db.Uuid
+  createdAt          DateTime                @default(now()) @map("created_at")
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher        Teacher                @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  requirement    DocumentRequirement?   @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  qualifications TeacherQualification[] @relation("QualificationDocument")
+  certifications TeacherCertification[] @relation("CertificationDocument")
+
+  @@index([organizationId, teacherId])
+  @@index([requirementId])
+  @@map("teacher_documents")
+}
+
+// What a teacher teaches, in which academic year. Only the year is required;
+// schools, +2 colleges and universities fill in what applies (a class and
+// section, a program, a subject, a batch). Changing class or subject ends
+// this row and creates a new one, so assignment history is preserved.
+model TeacherAssignment {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  teacherId        String           @map("teacher_id") @db.Uuid
+  academicYearId   String           @map("academic_year_id") @db.Uuid
+  educationLevelId String?          @map("education_level_id") @db.Uuid
+  programId        String?          @map("program_id") @db.Uuid
+  classId          String?          @map("class_id") @db.Uuid
+  sectionId        String?          @map("section_id") @db.Uuid
+  subjectId        String?          @map("subject_id") @db.Uuid
+  batchId          String?          @map("batch_id") @db.Uuid
+  role             TeachingRole     @default(SUBJECT_TEACHER)
+  status           AssignmentStatus @default(ACTIVE)
+  startDate        DateTime         @map("start_date") @db.Date
+  endDate          DateTime?        @map("end_date") @db.Date
+  weeklyPeriods    Int?             @map("weekly_periods")
+  notes            String?
+  endReason        String?          @map("end_reason")
+  assignedById     String?          @map("assigned_by_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher        Teacher         @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  academicYear   AcademicYear    @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  educationLevel EducationLevel? @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program        Program?        @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class          AcademicClass?  @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  section        Section?        @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  subject        Subject?        @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  batch          Batch?          @relation(fields: [batchId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  // One active class teacher per class/section per year.
+  @@unique([academicYearId, classId, sectionId], map: "teacher_assignments_class_teacher_key", where: raw("status = 'ACTIVE' AND role = 'CLASS_TEACHER' AND section_id IS NOT NULL"))
+  @@unique([academicYearId, classId], map: "teacher_assignments_class_teacher_no_section_key", where: raw("status = 'ACTIVE' AND role = 'CLASS_TEACHER' AND section_id IS NULL AND class_id IS NOT NULL"))
+  @@index([organizationId, academicYearId, status])
+  @@index([teacherId, status])
+  @@index([organizationId, classId, sectionId])
+  @@index([organizationId, subjectId])
+  @@index([organizationId, programId])
+  @@map("teacher_assignments")
+}
+
+// ================================================================== staff
+//
+// Non-teaching employees. Same shape as the teacher module: an organisation-
+// specific profile, separate from the login account (User), with employment
+// history, qualifications, documents and extra responsibilities as separate
+// records so history is never overwritten. Teachers and staff share
+// designations, document types and one employee ID sequence (unique across
+// both tables, enforced by a trigger). Salary, bank and tax details belong to
+// the payroll module and are deliberately not stored here.
+
+enum StaffEmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  CASUAL
+  OTHER
+}
+
+// Employment lifecycle. Archiving (archived_at) is separate.
+enum StaffEmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RESIGNED
+  TERMINATED
+  RETIRED
+  CONTRACT_EXPIRED
+}
+
+enum StaffQualificationKind {
+  ACADEMIC
+  CERTIFICATION
+  TRAINING
+}
+
+enum StaffDocumentCategory {
+  CV
+  ACADEMIC_CERTIFICATE
+  PROFESSIONAL_CERTIFICATE
+  TRAINING_CERTIFICATE
+  APPOINTMENT_LETTER
+  CONTRACT
+  EXPERIENCE_LETTER
+  IDENTITY
+  OTHER
+}
+
+// Administrative and support departments (Administration, Library, Finance,
+// Transport, ...). Academic faculties/departments stay in Faculty.
+model Department {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  code           String
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff        Staff[]
+  designations Designation[]
+  assignments  StaffAssignment[]
+
+  @@unique([organizationId, code])
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@map("departments")
+}
+
+model Staff {
+  id                           String    @id @default(uuid()) @db.Uuid
+  organizationId               String    @map("organization_id") @db.Uuid
+  // Login account, if any (must be a member of this organisation). Creating a
+  // profile never creates an account.
+  userId                       String?   @map("user_id") @db.Uuid
+  employeeId                   String    @map("employee_id")
+  firstName                    String    @map("first_name")
+  middleName                   String?   @map("middle_name")
+  lastName                     String    @map("last_name")
+  nameNepali                   String?   @map("name_nepali")
+  // Restricted (staff.sensitive.view): date of birth, addresses, emergency contact.
+  dateOfBirth                  DateTime? @map("date_of_birth") @db.Date
+  gender                       Gender?
+  nationality                  String?
+  profileImagePath             String?   @map("profile_image_path")
+  email                        String?
+  phone                        String?
+  alternatePhone               String?   @map("alternate_phone")
+  emergencyContactName         String?   @map("emergency_contact_name")
+  emergencyContactPhone        String?   @map("emergency_contact_phone")
+  emergencyContactRelationship String?   @map("emergency_contact_relationship")
+
+  // Current employment. Every change is also recorded in StaffEmploymentRecord.
+  dateOfJoining      DateTime              @map("date_of_joining") @db.Date
+  employmentType     StaffEmploymentType   @default(FULL_TIME) @map("employment_type")
+  employmentStatus   StaffEmploymentStatus @default(ACTIVE) @map("employment_status")
+  designationId      String?               @map("designation_id") @db.Uuid
+  departmentId       String?               @map("department_id") @db.Uuid
+  reportingToId      String?               @map("reporting_to_id") @db.Uuid
+  contractStartDate  DateTime?             @map("contract_start_date") @db.Date
+  contractEndDate    DateTime?             @map("contract_end_date") @db.Date
+  onProbation        Boolean               @default(false) @map("on_probation")
+  probationStartDate DateTime?             @map("probation_start_date") @db.Date
+  probationEndDate   DateTime?             @map("probation_end_date") @db.Date
+  // Leaving details (restricted to staff.employment.view).
+  resignationDate    DateTime?             @map("resignation_date") @db.Date
+  lastWorkingDate    DateTime?             @map("last_working_date") @db.Date
+  terminationDate    DateTime?             @map("termination_date") @db.Date
+  leavingReason      String?               @map("leaving_reason")
+  employmentNotes    String?               @map("employment_notes")
+
+  archivedAt   DateTime? @map("archived_at")
+  archivedById String?   @map("archived_by_id") @db.Uuid
+  createdById  String?   @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  organization      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  designation       Designation?            @relation(fields: [designationId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  department        Department?             @relation(fields: [departmentId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  // Plain FK: removing a manager clears the link (same organisation is checked in code).
+  reportingTo       Staff?                  @relation("StaffReporting", fields: [reportingToId], references: [id], onDelete: SetNull)
+  reports           Staff[]                 @relation("StaffReporting")
+  addresses         StaffAddress[]
+  employmentRecords StaffEmploymentRecord[]
+  qualifications    StaffQualification[]
+  documents         StaffDocument[]
+  assignments       StaffAssignment[]
+
+  @@unique([organizationId, employeeId])
+  @@unique([id, organizationId])
+  @@unique([organizationId, userId])
+  @@index([organizationId, employmentStatus, archivedAt])
+  @@index([organizationId, lastName, firstName])
+  @@index([organizationId, dateOfJoining])
+  @@index([organizationId, contractEndDate])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, designationId])
+  @@map("staff")
+}
+
+model StaffAddress {
+  id           String      @id @default(uuid()) @db.Uuid
+  staffId      String      @map("staff_id") @db.Uuid
+  type         AddressType
+  province     Int?
+  district     String?
+  municipality String?
+  wardNumber   Int?        @map("ward_number")
+  tole         String?
+  street       String?
+  postalCode   String?     @map("postal_code")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, type])
+  @@map("staff_addresses")
+}
+
+// Append-only employment history: one row per change, with names copied so
+// renaming or removing a department or designation never rewrites history.
+model StaffEmploymentRecord {
+  id                String                @id @default(uuid()) @db.Uuid
+  organizationId    String                @map("organization_id") @db.Uuid
+  staffId           String                @map("staff_id") @db.Uuid
+  effectiveDate     DateTime              @map("effective_date") @db.Date
+  employmentType    StaffEmploymentType   @map("employment_type")
+  employmentStatus  StaffEmploymentStatus @map("employment_status")
+  designationName   String?               @map("designation_name")
+  departmentName    String?               @map("department_name")
+  contractStartDate DateTime?             @map("contract_start_date") @db.Date
+  contractEndDate   DateTime?             @map("contract_end_date") @db.Date
+  onProbation       Boolean               @default(false) @map("on_probation")
+  note              String?
+  changedById       String?               @map("changed_by_id") @db.Uuid
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff        Staff        @relation(fields: [staffId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([staffId, effectiveDate])
+  @@map("staff_employment_records")
+}
+
+// Academic qualifications, professional certifications and training in one
+// list, told apart by `kind`.
+model StaffQualification {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  organizationId     String                 @map("organization_id") @db.Uuid
+  staffId            String                 @map("staff_id") @db.Uuid
+  kind               StaffQualificationKind @default(ACADEMIC)
+  // Required for academic qualifications; optional for certifications/training.
+  level              QualificationLevel?
+  // e.g. "BBS", "Bachelor in Library Science", "CA Inter", "CCNA"
+  title              String
+  specialization     String?
+  institutionName    String?                @map("institution_name")
+  awardingBody       String?                @map("awarding_body")
+  country            String?
+  completionYear     Int?                   @map("completion_year")
+  expiryDate         DateTime?              @map("expiry_date") @db.Date
+  // Grade, GPA or percentage as written on the certificate.
+  result             String?
+  documentId         String?                @map("document_id") @db.Uuid
+  verificationStatus VerificationStatus     @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?              @map("verified_at")
+  verifiedById       String?                @map("verified_by_id") @db.Uuid
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff        Staff          @relation(fields: [staffId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  document     StaffDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, kind, level])
+  @@index([staffId])
+  @@map("staff_qualifications")
+}
+
+model StaffDocument {
+  id                 String                @id @default(uuid()) @db.Uuid
+  organizationId     String                @map("organization_id") @db.Uuid
+  staffId            String                @map("staff_id") @db.Uuid
+  category           StaffDocumentCategory
+  requirementId      String?               @map("requirement_id") @db.Uuid
+  title              String
+  fileName           String                @map("file_name")
+  mimeType           String                @map("mime_type")
+  sizeBytes          Int                   @map("size_bytes")
+  storagePath        String                @unique @map("storage_path")
+  verificationStatus VerificationStatus    @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?             @map("verified_at")
+  verifiedById       String?               @map("verified_by_id") @db.Uuid
+  uploadedById       String?               @map("uploaded_by_id") @db.Uuid
+  createdAt          DateTime              @default(now()) @map("created_at")
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff          Staff                @relation(fields: [staffId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  requirement    DocumentRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  qualifications StaffQualification[]
+
+  @@index([organizationId, staffId])
+  @@index([requirementId])
+  @@map("staff_documents")
+}
+
+// Additional responsibilities (library, lab supervision, exam duty, hostel
+// warden, ...). Separate from employment status and from permissions.
+// Ending one keeps it as history.
+model StaffAssignment {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  staffId        String           @map("staff_id") @db.Uuid
+  title          String
+  departmentId   String?          @map("department_id") @db.Uuid
+  status         AssignmentStatus @default(ACTIVE)
+  startDate      DateTime         @map("start_date") @db.Date
+  endDate        DateTime?        @map("end_date") @db.Date
+  notes          String?
+  endReason      String?          @map("end_reason")
+  assignedById   String?          @map("assigned_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff        Staff        @relation(fields: [staffId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  department   Department?  @relation(fields: [departmentId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@index([organizationId, status])
+  @@index([staffId, status])
+  @@map("staff_assignments")
 }

@@ -29,7 +29,7 @@ function isActive(pathname: string, href: string) {
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { user, permissions } = useSession()
+  const { user, permissions, guardianPortal } = useSession()
 
   return (
     <Sidebar collapsible="icon">
@@ -39,7 +39,7 @@ export function AppSidebar() {
 
       <SidebarContent>
         {/* Permission-aware: items without the user's permission aren't shown. */}
-        {visibleNavGroups(permissions).map((group) => (
+        {visibleNavGroups(permissions, { guardian: guardianPortal }).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarMenu>

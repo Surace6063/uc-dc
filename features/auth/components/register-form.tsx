@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { register } from "@/features/auth/actions"
 
-export function RegisterForm() {
+export function RegisterForm({ next }: { next?: string }) {
+  // Arriving from a parent-portal invitation rather than to set up a school.
+  const invited = next?.startsWith("/invitations/") ?? false
   const [state, action, pending] = React.useActionState(register, undefined)
   const failed = state && !state.ok ? state : undefined
 
@@ -18,8 +20,10 @@ export function RegisterForm() {
         <h1 className="font-display text-4xl tracking-tight">Confirm your email</h1>
         <FormAlert tone="success">{state.message}</FormAlert>
         <p className="text-sm text-muted-foreground">
-          After confirming, you&apos;ll set up your organisation.{" "}
-          <Link href="/login" className="font-medium text-foreground hover:underline">
+          {invited
+            ? "The confirmation link brings you back to your invitation."
+            : "After confirming, you’ll set up your organisation."}{" "}
+          <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-medium text-foreground hover:underline">
             Back to sign in
           </Link>
         </p>
@@ -32,12 +36,15 @@ export function RegisterForm() {
       <div className="space-y-2">
         <h1 className="font-display text-4xl tracking-tight">Create your account</h1>
         <p className="text-sm text-muted-foreground">
-          Set up your school or college in a few minutes.
+          {invited
+            ? "Use the email address your invitation was sent to."
+            : "Set up your school or college in a few minutes."}
         </p>
       </div>
 
       <form action={action} className="mt-8 space-y-5" noValidate>
         {failed && <FormAlert tone="error">{failed.error}</FormAlert>}
+        {next && <input type="hidden" name="next" value={next} />}
 
         <div className="space-y-2">
           <Label htmlFor="name">Full name</Label>
@@ -93,7 +100,7 @@ export function RegisterForm() {
 
       <p className="mt-8 text-center text-sm text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-foreground hover:underline hover:underline-offset-4">
+        <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-medium text-foreground hover:underline hover:underline-offset-4">
           Sign in
         </Link>
       </p>

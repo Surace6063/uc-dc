@@ -56,6 +56,10 @@ export async function signIn(
     if (memberships.length === 1) {
       await writeCurrentOrganizationId(memberships[0].organization.id)
       destination = safeRedirectPath(input.next, "/dashboard")
+    } else if (memberships.length === 0 && input.next) {
+      // No organisation yet, e.g. a guardian on their way to accept an
+      // invitation: continue to where they came from.
+      destination = safeRedirectPath(input.next, await homePathFor(user))
     } else {
       // With several organisations, always ask which one to open.
       await clearCurrentOrganizationId()
@@ -69,6 +73,12 @@ export async function signIn(
 }
 
 type RegisterValues = { name: string; email: string }
+
+// Where a new account continues after confirming its email: an invitation
+// link when it came from one, otherwise setting up an organisation.
+function registerNext(formData: FormData) {
+  return safeRedirectPath(formData.get("next"), "/onboarding")
+}
 
 export async function register(
   _prev: ActionState<RegisterValues>,
@@ -85,7 +95,7 @@ export async function register(
       password: input.password,
       options: {
         data: { name: input.name },
-        emailRedirectTo: `${await getSiteUrl()}/auth/confirm?next=/onboarding`,
+        emailRedirectTo: `${await getSiteUrl()}/auth/confirm?next=${encodeURIComponent(registerNext(formData))}`,
       },
     })
 
@@ -109,7 +119,7 @@ export async function register(
     return actionError(error, values)
   }
 
-  if (signedIn) redirect("/onboarding")
+  if (signedIn) redirect(registerNext(formData))
   return {
     ok: true,
     message: "Check your inbox. We've sent a link to confirm your email address.",

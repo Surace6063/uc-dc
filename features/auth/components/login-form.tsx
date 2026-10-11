@@ -79,7 +79,7 @@ export function LoginForm({ next, linkError }: { next?: string; linkError?: bool
 
       <p className="mt-8 text-center text-sm text-muted-foreground">
         New here?{" "}
-        <Link href="/register" className="font-medium text-foreground hover:underline hover:underline-offset-4">
+        <Link href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"} className="font-medium text-foreground hover:underline hover:underline-offset-4">
           Create an account
         </Link>
       </p>

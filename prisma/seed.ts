@@ -16,6 +16,8 @@ import {
 } from "@/services/organizations/organization-service"
 import { ensureAppUser } from "@/services/users/user-service"
 
+import { seedEducationStructure } from "./seed-structure"
+
 const PASSWORD = process.env.SEED_PASSWORD ?? "Password123!"
 
 type SeedOrg = {
@@ -24,6 +26,8 @@ type SeedOrg = {
   type: "SCHOOL" | "COLLEGE"
   country: string
   members: { email: string; name: string; role: string }[]
+  // Education presets to start from (see lib/education/presets.ts).
+  presets: string[]
 }
 
 const organizations: SeedOrg[] = [
@@ -41,6 +45,7 @@ const organizations: SeedOrg[] = [
       // Belongs to both organisations with different roles.
       { email: "multi@example.com", name: "Prakash Magar", role: "teacher" },
     ],
+    presets: ["ecd", "basic", "secondary"],
   },
   {
     slug: "xyz-college",
@@ -53,6 +58,7 @@ const organizations: SeedOrg[] = [
       { email: "xyz.student@example.com", name: "Nisha Karki", role: "student" },
       { email: "multi@example.com", name: "Prakash Magar", role: "admin" },
     ],
+    presets: ["higher_secondary", "bachelor"],
   },
 ]
 
@@ -131,11 +137,14 @@ async function main() {
     if (existing) await resetDefaultRoles(existing.id)
     console.log(`✔ ${org.name}`)
 
+    let actorId: string | null = null
     for (const member of org.members) {
       const userId = await ensureUser(member.email, member.name)
       await upsertMember(organization.id, userId, member.role)
+      actorId ??= userId
       console.log(`    ${member.role.padEnd(8)} ${member.email}`)
     }
+    if (actorId) await seedEducationStructure(organization, actorId, org.presets)
   }
 
   console.log(`\nAll seeded accounts use the password: ${PASSWORD}`)

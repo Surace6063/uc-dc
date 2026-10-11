@@ -13,6 +13,10 @@ function ThemeProvider({
       defaultTheme="system"
       enableSystem
       disableTransitionOnChange
+      // next-themes sets the theme with an inline script before first paint.
+      // It only needs to run from the server HTML; on the client, mark it
+      // text/plain so React doesn't warn about rendering a <script>.
+      scriptProps={{ type: typeof window === "undefined" ? "text/javascript" : "text/plain" }}
       {...props}
     >
       <ThemeHotkey />
@@ -47,7 +51,8 @@ function ThemeHotkey() {
         return
       }
 
-      if (event.key.toLowerCase() !== "d") {
+      // Autofill and some IMEs dispatch keydown events without a `key`.
+      if (typeof event.key !== "string" || event.key.toLowerCase() !== "d") {
         return
       }
 
