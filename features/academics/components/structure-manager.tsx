@@ -13,7 +13,9 @@ import {
   NumberingTab,
   YearsTab,
 } from "@/features/academics/components/other-tabs"
-import { DesignationsTab, EmployeeIdSettings, SubjectsTab } from "@/features/academics/components/staff-tabs"
+import Link from "next/link"
+
+import { DesignationsTab, EmployeeIdSettings } from "@/features/academics/components/staff-tabs"
 import type { EducationStructure } from "@/services/academics/structure-service"
 
 const TABS = [
@@ -76,7 +78,16 @@ export function EducationStructureManager({
         <BatchesTab structure={structure} canManage={canManage} />
       </TabsContent>
       <TabsContent value="subjects">
-        <SubjectsTab structure={structure} canManage={canManage} />
+        <div className="rounded-xl border border-dashed p-6 text-sm">
+          <p className="font-medium">Subjects and courses have their own module</p>
+          <p className="mt-1 text-muted-foreground">
+            Subjects, categories, curricula and which subjects each class studies are managed under{" "}
+            <Link href="/dashboard/subjects" className="underline underline-offset-2">
+              Subjects &amp; Courses
+            </Link>
+            .
+          </p>
+        </div>
       </TabsContent>
       <TabsContent value="designations">
         <DesignationsTab structure={structure} canManage={canManage} />

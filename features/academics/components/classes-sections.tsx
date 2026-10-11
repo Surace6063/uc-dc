@@ -24,7 +24,8 @@ import {
   useStructureForm,
 } from "@/features/academics/components/structure-kit"
 import { academicClassSchema, generateClassesSchema, sectionSchema } from "@/features/academics/schemas"
-import { GROUPING_LABELS } from "@/lib/education/presets"
+import { mediumOptions, MEDIUM_LABELS, SHIFT_LABELS, shiftOptions } from "@/features/classes/constants"
+import { GROUPING_LABELS, suggestLocalClassName } from "@/lib/education/presets"
 import type { EducationStructure } from "@/services/academics/structure-service"
 
 type Class = EducationStructure["classes"][number]
@@ -49,6 +50,7 @@ export function ClassesTab({ structure, canManage }: { structure: EducationStruc
   const [generateError, setGenerateError] = React.useState<string | null>(null)
 
   const classLevelId = useWatch({ control: classForm.form.control, name: "educationLevelId" })
+  const className = useWatch({ control: classForm.form.control, name: "name" })
   const generateLevelId = useWatch({ control: generateForm.control, name: "educationLevelId" })
 
   const levels = structure.levels.filter((l) => !levelFilter || l.id === levelFilter)
@@ -62,6 +64,10 @@ export function ClassesTab({ structure, canManage }: { structure: EducationStruc
       educationLevelId: c?.educationLevelId ?? preset?.levelId ?? level?.id ?? "",
       programId: c?.programId ?? preset?.programId ?? "",
       name: c?.name ?? "",
+      localName: c?.localName ?? "",
+      code: c?.code ?? "",
+      description: c?.description ?? "",
+      capacity: c?.capacity ?? "",
       kind: c?.kind ?? level?.groupingKind ?? "GRADE",
       sequence: c?.sequence ?? 1,
       isActive: c?.isActive ?? true,
@@ -73,7 +79,12 @@ export function ClassesTab({ structure, canManage }: { structure: EducationStruc
     sectionForm.open(s?.id ?? null, {
       classId: s?.classId ?? classId ?? "",
       name: s?.name ?? "",
+      code: s?.code ?? "",
+      description: s?.description ?? "",
       capacity: s?.capacity ?? "",
+      shift: s?.shift ?? "",
+      medium: s?.medium ?? "",
+      room: s?.room ?? "",
       isActive: s?.isActive ?? true,
       sortOrder: s?.sortOrder ?? 0,
     })
@@ -132,7 +143,10 @@ export function ClassesTab({ structure, canManage }: { structure: EducationStruc
               <div key={c.id} className="rounded-lg border p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium">{c.name}</p>
+                    <p className="font-medium">
+                      {c.name}
+                      {c.localName && <span className="ml-1.5 font-normal text-muted-foreground">{c.localName}</span>}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {GROUPING_LABELS[c.kind]} · order {c.sequence} · {c._count.enrollments} enrollments
                     </p>
@@ -159,7 +173,12 @@ export function ClassesTab({ structure, canManage }: { structure: EducationStruc
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {sectionsOf(c.id).map((s) =>
                     canManage ? (
-                      <button key={s.id} type="button" onClick={() => editSection(s)} title="Edit section">
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => editSection(s)}
+                        title={["Edit section", s.shift && SHIFT_LABELS[s.shift], s.medium && `${MEDIUM_LABELS[s.medium]} medium`, s.room && `Room ${s.room}`].filter(Boolean).join(" · ")}
+                      >
                         <Badge variant={s.isActive ? "secondary" : "outline"}>
                           {s.name}
                           {s.capacity ? ` · ${s.capacity}` : ""}
@@ -245,7 +264,22 @@ export function ClassesTab({ structure, canManage }: { structure: EducationStruc
         error={classForm.formError}
         onSubmit={classForm.submit}
       >
-        <TextField control={classForm.form.control} name="name" label="Name" required placeholder="Grade 1, Semester 1, Year 2…" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            control={classForm.form.control}
+            name="name"
+            label="Name"
+            required
+            placeholder="Grade 1, Semester 1, Year 2…"
+          />
+          <TextField
+            control={classForm.form.control}
+            name="localName"
+            label="Name in Nepali"
+            placeholder={suggestLocalClassName(className ?? "") ?? "कक्षा १"}
+            description="Optional, for registers and report cards."
+          />
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectField
             control={classForm.form.control}
@@ -289,8 +323,13 @@ export function ClassesTab({ structure, canManage }: { structure: EducationStruc
         onSubmit={sectionForm.submit}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <TextField control={sectionForm.form.control} name="name" label="Name" required placeholder="A, Morning…" />
+          <TextField control={sectionForm.form.control} name="name" label="Name" required placeholder="A, क, Morning…" />
           <TextField control={sectionForm.form.control} name="capacity" label="Capacity" type="number" min={1} />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SelectField control={sectionForm.form.control} name="shift" label="Shift" placeholder="—" options={shiftOptions} />
+          <SelectField control={sectionForm.form.control} name="medium" label="Medium" placeholder="—" options={mediumOptions} />
+          <TextField control={sectionForm.form.control} name="room" label="Room" placeholder="101" />
         </div>
         <SelectField
           control={sectionForm.form.control}

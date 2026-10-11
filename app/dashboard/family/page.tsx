@@ -2,7 +2,6 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import {
   BookOpenCheckIcon,
-  CalendarCheckIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
   HeartHandshakeIcon,
@@ -21,11 +20,13 @@ import { Card } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { PortalPreferencesForm } from "@/features/guardians/components/portal-preferences"
 import { LINK_FLAGS, RELATIONSHIP_LABELS } from "@/features/guardians/constants"
+import { StudentAttendanceOverviewView } from "@/features/attendance/components/student-overview"
 import { StudentStatusBadge } from "@/features/students/components/status-badges"
 import { GENDER_LABELS, initials } from "@/features/students/constants"
 import { getPageContext } from "@/lib/authorization/page"
 import { signedUrls } from "@/lib/supabase/storage"
 import { cn } from "@/lib/utils"
+import { childAttendance } from "@/services/attendance/portal-service"
 import {
   getGuardianAccountState,
   getPortalChildOverview,
@@ -113,8 +114,9 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
   // overview re-checks access on the server either way.
   const requested = z.uuid().safeParse((await searchParams).child)
   const selected = children.find((c) => requested.success && c.id === requested.data) ?? children[0]
-  const [overview, photos] = await Promise.all([
+  const [overview, attendance, photos] = await Promise.all([
     getPortalChildOverview(context, selected.id),
+    childAttendance(context, selected.id),
     signedUrls(children.map((c) => c.profileImagePath).filter((p): p is string => !!p), 600),
   ])
   const { student, enrollment, classTeachers, link } = overview
@@ -197,10 +199,14 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
         </Card>
       </div>
 
+      <section className="grid gap-3" aria-labelledby="child-attendance">
+        <h2 id="child-attendance" className="text-base font-semibold">Attendance</h2>
+        <StudentAttendanceOverviewView data={attendance} who={student.firstName} />
+      </section>
+
       <Card className="gap-3 p-5">
         <h2 className="text-base font-semibold">School updates</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <ModuleCard title="Attendance" icon={CalendarCheckIcon} description="Attendance summaries will appear here once the school starts recording attendance online." />
           <ModuleCard title="Examinations & results" icon={ClipboardListIcon} description="Upcoming exams and released results will appear here when the exams module is enabled." />
           <ModuleCard title="Homework & assignments" icon={BookOpenCheckIcon} description="Shown here when the school uses the learning module." />
           <ModuleCard title="Timetable" icon={TableIcon} description="Shown here once the school publishes timetables online." />

@@ -126,6 +126,59 @@ async function nextRollNumber(
   return String(max + 1)
 }
 
+// When the organisation enforces capacity, refuses placing `incoming` more
+// active students in a section (its capacity) or a sectionless class (the
+// class capacity). Serialised per class so two placements can't both take
+// the last seat.
+export async function assertSeatsAvailable(
+  tx: TransactionClient,
+  organizationId: string,
+  placement: { academicYearId: string; classId: string; sectionId: string | null },
+  incoming: number,
+  options: { prefix?: string; field?: string; force?: boolean } = {}
+) {
+  if (incoming <= 0) return
+  if (!options.force) {
+    const settings = await getStudentSettings(tx, organizationId)
+    if (!settings.enforceSectionCapacity) return
+  }
+  const [section, academicClass] = await Promise.all([
+    placement.sectionId
+      ? tx.section.findFirst({
+          where: { id: placement.sectionId, organizationId },
+          select: { name: true, capacity: true },
+        })
+      : null,
+    tx.academicClass.findFirst({
+      where: { id: placement.classId, organizationId },
+      select: { name: true, capacity: true },
+    }),
+  ])
+  const capacity = placement.sectionId ? section?.capacity : academicClass?.capacity
+  if (!capacity) return
+
+  const key = `seats:${placement.academicYearId}:${placement.classId}`
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`
+  const seated = await tx.enrollment.count({
+    where: {
+      organizationId,
+      academicYearId: placement.academicYearId,
+      classId: placement.classId,
+      sectionId: placement.sectionId,
+      status: "ACTIVE",
+    },
+  })
+  if (seated + incoming > capacity) {
+    const where = placement.sectionId ? `Section ${section?.name}` : (academicClass?.name ?? "This class")
+    const free = Math.max(0, capacity - seated)
+    invalid(
+      options.prefix ?? "",
+      options.field ?? (placement.sectionId ? "sectionId" : "classId"),
+      `${where} is full (${seated} of ${capacity} seats taken${free ? `, ${free} free` : ""}).`
+    )
+  }
+}
+
 const ROLL_TAKEN = "This roll number is already used in this class/section."
 const ALREADY_ENROLLED = "The student already has an active enrollment in this academic year."
 
@@ -161,6 +214,7 @@ export async function createEnrollment(
     select: { id: true },
   })
   if (open) invalid(prefix, "academicYearId", ALREADY_ENROLLED)
+  await assertSeatsAvailable(tx, organizationId, placement, 1, { prefix })
 
   let rollNumber = input.rollNumber
   if (!rollNumber) {
@@ -273,6 +327,14 @@ export async function correctEnrollment(ctx: Ctx, enrollmentId: string, raw: unk
         },
         ""
       )
+      if (enrollment.status === "ACTIVE" && input.sectionId !== enrollment.sectionId) {
+        await assertSeatsAvailable(
+          tx,
+          ctx.organization.id,
+          { academicYearId: enrollment.academicYearId, classId: enrollment.classId, sectionId: input.sectionId },
+          1
+        )
+      }
       if (input.rollNumber && enrollment.status === "ACTIVE") {
         const taken = await tx.enrollment.findFirst({
           where: {

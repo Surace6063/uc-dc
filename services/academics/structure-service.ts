@@ -14,11 +14,10 @@ import {
   sectionSchema,
   staffSettingsSchema,
   studentSettingsSchema,
-  subjectSchema,
 } from "@/features/academics/schemas"
 import type { AuthContext } from "@/lib/authorization/context"
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/authorization/errors"
-import { findPreset, generatedClassNames } from "@/lib/education/presets"
+import { findPreset, generatedClassNames, suggestLocalClassName } from "@/lib/education/presets"
 import { prisma, type TransactionClient } from "@/lib/prisma"
 import { isForeignKeyViolation, isUniqueViolation } from "@/lib/prisma-errors"
 import { toDate } from "@/lib/validation"
@@ -35,13 +34,21 @@ function fieldError(field: string, message: string): never {
 }
 
 // Converts constraint errors from writes into friendly messages.
-async function guardWrite<T>(
+export async function guardWrite<T>(
   fn: () => Promise<T>,
-  messages: { unique?: [field: string, message: string]; inUse?: string }
+  messages: {
+    // Specific unique indexes first (index name → field), then any other.
+    uniqueBy?: [index: string, field: string, message: string][]
+    unique?: [field: string, message: string]
+    inUse?: string
+  }
 ): Promise<T> {
   try {
     return await fn()
   } catch (error) {
+    for (const [index, field, message] of messages.uniqueBy ?? []) {
+      if (isUniqueViolation(error, index)) fieldError(field, message)
+    }
     if (messages.unique && isUniqueViolation(error)) fieldError(...messages.unique)
     if (messages.inUse && isForeignKeyViolation(error)) throw new ConflictError(messages.inUse)
     throw error
@@ -81,8 +88,8 @@ export async function getEducationStructure(ctx: Pick<AuthContext, "organization
         where: { organizationId },
         orderBy: [{ sequence: "asc" }, { name: "asc" }],
         select: {
-          id: true, name: true, kind: true, sequence: true, isActive: true,
-          educationLevelId: true, programId: true,
+          id: true, name: true, localName: true, code: true, description: true, kind: true, sequence: true,
+          capacity: true, isActive: true, archivedAt: true, educationLevelId: true, programId: true,
           _count: { select: { enrollments: true, sections: true } },
         },
       }),
@@ -90,7 +97,8 @@ export async function getEducationStructure(ctx: Pick<AuthContext, "organization
         where: { organizationId },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         select: {
-          id: true, name: true, classId: true, capacity: true, isActive: true, sortOrder: true,
+          id: true, name: true, code: true, description: true, classId: true, capacity: true,
+          shift: true, medium: true, room: true, isActive: true, sortOrder: true, archivedAt: true,
           _count: { select: { enrollments: true } },
         },
       }),
@@ -178,6 +186,7 @@ export async function getStudentSettings(db: Db, organizationId: string) {
     admissionNumberPadding: settings?.admissionNumberPadding ?? 5,
     nextAdmissionSequence: settings?.nextAdmissionSequence ?? 1,
     rollNumberMode: settings?.rollNumberMode ?? "AUTOMATIC",
+    enforceSectionCapacity: settings?.enforceSectionCapacity ?? false,
   } as const
 }
 
@@ -324,6 +333,7 @@ export async function applyEducationPreset(ctx: Ctx, raw: unknown) {
               organizationId,
               educationLevelId: level.id,
               name,
+              localName: suggestLocalClassName(name),
               kind: preset.groupingKind,
               sequence: i + 1,
             })),
@@ -435,37 +445,57 @@ export async function deleteProgram(ctx: Ctx, id: string) {
 
 export async function saveAcademicClass(ctx: Ctx, id: string | null, raw: unknown) {
   const input = academicClassSchema.parse(raw)
-  const organizationId = ctx.organization.id
+  return guardWrite(() => prisma.$transaction((tx) => saveAcademicClassInTx(tx, ctx, id, input)), CLASS_WRITE_ERRORS)
+}
 
-  return guardWrite(
-    () =>
-      prisma.$transaction(async (tx) => {
-        await checkClassPlacement(tx, ctx, input.educationLevelId, input.programId)
-        if (id) {
-          const existing = await findOwned(
-            tx.academicClass.findFirst({ where: { id, organizationId } }),
-            "Class"
-          )
-          const moved =
-            existing.educationLevelId !== input.educationLevelId || existing.programId !== input.programId
-          // Enrollments copy the class's level/program, so a used class can't move.
-          if (moved && (await tx.enrollment.count({ where: { classId: id, organizationId } })) > 0) {
-            fieldError("educationLevelId", "Students are enrolled in this class; it can't be moved.")
-          }
-          const updated = await tx.academicClass.update({ where: { id: existing.id }, data: input })
-          await audit(tx, ctx, {
-            action: "class.update", entityType: "class", entityId: id, summary: `Updated class ${updated.name}`,
-          })
-          return updated
-        }
-        const created = await tx.academicClass.create({ data: { ...input, organizationId } })
-        await audit(tx, ctx, {
-          action: "class.create", entityType: "class", entityId: created.id, summary: `Created class ${created.name}`,
-        })
-        return created
-      }),
-    { unique: ["name", "A class with this name already exists here."] }
-  )
+export const CLASS_WRITE_ERRORS = {
+  uniqueBy: [["academic_classes_code_key", "code", "Another class already uses this code."]] as [string, string, string][],
+  unique: ["name", "A class with this name already exists here."] as [string, string],
+}
+
+// Creates or updates a class inside the caller's transaction (the classes
+// module also creates first sections in the same transaction).
+export async function saveAcademicClassInTx(
+  tx: TransactionClient,
+  ctx: Ctx,
+  id: string | null,
+  input: ReturnType<typeof academicClassSchema.parse>
+) {
+  const organizationId = ctx.organization.id
+  await checkClassPlacement(tx, ctx, input.educationLevelId, input.programId)
+  // The unique index is exact; "Grade 6" and "grade 6" are still the same class.
+  const sameName = await tx.academicClass.findFirst({
+    where: {
+      organizationId,
+      educationLevelId: input.educationLevelId,
+      programId: input.programId,
+      name: { equals: input.name, mode: "insensitive" },
+      ...(id ? { id: { not: id } } : {}),
+    },
+    select: { id: true },
+  })
+  if (sameName) fieldError("name", "A class with this name already exists here.")
+  if (id) {
+    const existing = await findOwned(tx.academicClass.findFirst({ where: { id, organizationId } }), "Class")
+    if (existing.archivedAt && input.isActive) {
+      fieldError("isActive", "Restore this class before activating it.")
+    }
+    const moved = existing.educationLevelId !== input.educationLevelId || existing.programId !== input.programId
+    // Enrollments copy the class's level/program, so a used class can't move.
+    if (moved && (await tx.enrollment.count({ where: { classId: id, organizationId } })) > 0) {
+      fieldError("educationLevelId", "Students are enrolled in this class; it can't be moved.")
+    }
+    const updated = await tx.academicClass.update({ where: { id: existing.id }, data: input })
+    await audit(tx, ctx, {
+      action: "class.update", entityType: "class", entityId: id, summary: `Updated class ${updated.name}`,
+    })
+    return updated
+  }
+  const created = await tx.academicClass.create({ data: { ...input, organizationId } })
+  await audit(tx, ctx, {
+    action: "class.create", entityType: "class", entityId: created.id, summary: `Created class ${created.name}`,
+  })
+  return created
 }
 
 export async function generateClasses(ctx: Ctx, raw: unknown) {
@@ -491,6 +521,7 @@ export async function generateClasses(ctx: Ctx, raw: unknown) {
             educationLevelId: input.educationLevelId,
             programId: input.programId,
             name,
+            localName: suggestLocalClassName(name),
             kind: input.kind,
             sequence: input.startAt + i,
           }))
@@ -528,9 +559,23 @@ export async function saveSection(ctx: Ctx, id: string | null, raw: unknown) {
   return guardWrite(
     () =>
       prisma.$transaction(async (tx) => {
-        await requireClass(tx, ctx, input.classId)
+        const academicClass = await requireClass(tx, ctx, input.classId)
+        if (academicClass.archivedAt) fieldError("classId", "This class is archived. Restore it first.")
+        const sameName = await tx.section.findFirst({
+          where: {
+            organizationId,
+            classId: input.classId,
+            name: { equals: input.name, mode: "insensitive" },
+            ...(id ? { id: { not: id } } : {}),
+          },
+          select: { id: true },
+        })
+        if (sameName) fieldError("name", "This class already has a section with that name.")
         if (id) {
           const existing = await findOwned(tx.section.findFirst({ where: { id, organizationId } }), "Section")
+          if (existing.archivedAt && input.isActive) {
+            fieldError("isActive", "Restore this section before activating it.")
+          }
           if (
             existing.classId !== input.classId &&
             (await tx.enrollment.count({ where: { sectionId: id, organizationId } })) > 0
@@ -782,53 +827,6 @@ export async function saveStudentSettings(ctx: Ctx, raw: unknown) {
     })
     return settings
   })
-}
-
-// ------------------------------------------------------------------ subjects
-
-export async function saveSubject(ctx: Ctx, id: string | null, raw: unknown) {
-  const input = subjectSchema.parse(raw)
-  const organizationId = ctx.organization.id
-  return guardWrite(
-    () =>
-      prisma.$transaction(async (tx) => {
-        // A program implies its level; both must belong to this organisation.
-        let educationLevelId = input.educationLevelId
-        if (input.programId) {
-          const program = await requireProgram(tx, ctx, input.programId)
-          if (educationLevelId && educationLevelId !== program.educationLevelId) {
-            fieldError("programId", "That program belongs to a different education level.")
-          }
-          educationLevelId = program.educationLevelId
-        } else if (educationLevelId) {
-          await requireLevel(tx, ctx, educationLevelId)
-        }
-        const data = { ...input, educationLevelId }
-        if (id) {
-          await findOwned(tx.subject.findFirst({ where: { id, organizationId } }), "Subject")
-          const subject = await tx.subject.update({ where: { id }, data })
-          await audit(tx, ctx, { action: "subject.update", entityType: "subject", entityId: id, summary: `Updated subject ${subject.name}` })
-          return subject
-        }
-        const subject = await tx.subject.create({ data: { ...data, organizationId } })
-        await audit(tx, ctx, { action: "subject.create", entityType: "subject", entityId: subject.id, summary: `Created subject ${subject.name}` })
-        return subject
-      }),
-    { unique: ["code", "Another subject already uses this code."] }
-  )
-}
-
-export async function deleteSubject(ctx: Ctx, id: string) {
-  const organizationId = ctx.organization.id
-  await findOwned(prisma.subject.findFirst({ where: { id, organizationId } }), "Subject")
-  await guardWrite(
-    () =>
-      prisma.$transaction(async (tx) => {
-        await tx.subject.deleteMany({ where: { id, organizationId } })
-        await audit(tx, ctx, { action: "subject.delete", entityType: "subject", entityId: id, summary: "Deleted a subject" })
-      }),
-    { inUse: "Teachers have been assigned to this subject. Deactivate it instead." }
-  )
 }
 
 // -------------------------------------------------------------- designations

@@ -70,3 +70,19 @@ export function toDate(value: string | null) {
 export function fromDate(value: Date | null | undefined) {
   return value ? value.toISOString().slice(0, 10) : ""
 }
+
+// Optional number with at most `places` decimals (credit hours such as 3.75).
+export const optionalDecimal = (min: number, max: number, places = 2) =>
+  z
+    .union([z.number(), z.string()])
+    .nullish()
+    .transform((value, ctx) => {
+      if (value === null || value === undefined || value === "") return null
+      const n = typeof value === "number" ? value : Number(value)
+      const scaled = n * 10 ** places
+      if (!Number.isFinite(n) || n < min || n > max || Math.abs(scaled - Math.round(scaled)) > 1e-9) {
+        ctx.addIssue({ code: "custom", message: `Enter a number from ${min} to ${max} with at most ${places} decimals.` })
+        return z.NEVER
+      }
+      return n
+    })

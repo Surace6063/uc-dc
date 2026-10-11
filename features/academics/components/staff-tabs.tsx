@@ -22,101 +22,10 @@ import {
   useDeleteRecord,
   useStructureForm,
 } from "@/features/academics/components/structure-kit"
-import { designationSchema, staffSettingsSchema, subjectSchema } from "@/features/academics/schemas"
+import { designationSchema, staffSettingsSchema } from "@/features/academics/schemas"
 import type { EducationStructure } from "@/services/academics/structure-service"
 
 type Props = { structure: EducationStructure; canManage: boolean }
-
-// ------------------------------------------------------------------ subjects
-
-type Subject = EducationStructure["subjects"][number]
-
-export function SubjectsTab({ structure, canManage }: Props) {
-  const [open, setOpen] = React.useState(false)
-  const { form, recordId, open: load, submit, formError } = useStructureForm("subject", subjectSchema, () => setOpen(false))
-  const { confirmDelete, dialog } = useDeleteRecord("subject")
-  const levelId = useWatch({ control: form.control, name: "educationLevelId" })
-  const level = structure.levels.find((l) => l.id === levelId)
-  const levelName = (id: string | null) => structure.levels.find((l) => l.id === id)?.name
-  const programName = (id: string | null) => structure.programs.find((p) => p.id === id)?.code
-
-  function edit(subject: Subject | null) {
-    load(subject?.id ?? null, {
-      name: subject?.name ?? "",
-      code: subject?.code ?? "",
-      educationLevelId: subject?.educationLevelId ?? "",
-      programId: subject?.programId ?? "",
-      creditHours: subject?.creditHours ?? "",
-      isActive: subject?.isActive ?? true,
-      sortOrder: subject?.sortOrder ?? 0,
-    })
-    setOpen(true)
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <SectionHeader
-        title="Subjects and courses"
-        description="What teachers are assigned to teach: Mathematics, Accountancy, Data Structures… Optionally limit a subject to one level or program."
-        action={canManage && <AddButton onClick={() => edit(null)}>Add subject</AddButton>}
-      />
-      <RecordTable
-        rows={structure.subjects}
-        canManage={canManage}
-        onEdit={edit}
-        onDelete={(s) => confirmDelete({ id: s.id, name: s.name })}
-        emptyTitle="No subjects yet"
-        emptyDescription="Add the subjects or courses your institution teaches."
-        columns={[
-          { header: "Subject", cell: (s) => <span className="font-medium">{s.name}</span> },
-          { header: "Code", cell: (s) => <code className="text-xs">{s.code}</code> },
-          {
-            header: "Applies to",
-            cell: (s) => [levelName(s.educationLevelId), programName(s.programId)].filter(Boolean).join(" · ") || "Any level",
-          },
-          { header: "Credits", cell: (s) => s.creditHours ?? "—", className: "tabular-nums" },
-          { header: "Assignments", cell: (s) => s._count.assignments, className: "tabular-nums" },
-          { header: "Status", cell: (s) => <ActiveBadge active={s.isActive} /> },
-        ]}
-      />
-      <FormDialog
-        open={open}
-        onOpenChange={setOpen}
-        title={recordId ? "Edit subject" : "Add subject"}
-        pending={form.formState.isSubmitting}
-        error={formError}
-        onSubmit={submit}
-      >
-        <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
-          <TextField control={form.control} name="name" label="Name" required placeholder="Mathematics" />
-          <TextField control={form.control} name="code" label="Code" required placeholder="MATH" />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <SelectField
-            control={form.control}
-            name="educationLevelId"
-            label="Education level"
-            placeholder="Any level"
-            options={structure.levels.map((l) => ({ value: l.id, label: l.name }))}
-            onValueChange={() => form.setValue("programId", "")}
-          />
-          {level?.usesPrograms && (
-            <SelectField
-              control={form.control}
-              name="programId"
-              label="Program"
-              placeholder="Any program"
-              options={structure.programs.filter((p) => p.educationLevelId === level.id).map((p) => ({ value: p.id, label: p.name }))}
-            />
-          )}
-          <TextField control={form.control} name="creditHours" label="Credit hours" type="number" min={0} />
-        </div>
-        <SwitchField control={form.control} name="isActive" label="Active" />
-      </FormDialog>
-      {dialog}
-    </div>
-  )
-}
 
 // -------------------------------------------------------------- designations
 

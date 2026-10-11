@@ -22,7 +22,6 @@ export type StructureEntity =
   | "faculty"
   | "batch"
   | "requirement"
-  | "subject"
   | "designation"
 
 const savers = {
@@ -34,7 +33,6 @@ const savers = {
   faculty: structure.saveFaculty,
   batch: structure.saveBatch,
   requirement: structure.saveDocumentRequirement,
-  subject: structure.saveSubject,
   designation: structure.saveDesignation,
 } as const
 
@@ -47,7 +45,6 @@ const deleters = {
   faculty: structure.deleteFaculty,
   batch: structure.deleteBatch,
   requirement: structure.deleteDocumentRequirement,
-  subject: structure.deleteSubject,
   designation: structure.deleteDesignation,
 } as const
 
@@ -55,6 +52,7 @@ const entitySchema = z.enum(Object.keys(savers) as [StructureEntity, ...Structur
 
 function refresh() {
   revalidatePath("/dashboard/academics")
+  revalidatePath("/dashboard/classes", "layout")
   revalidatePath("/dashboard/students", "layout")
   revalidatePath("/dashboard/teachers", "layout")
 }

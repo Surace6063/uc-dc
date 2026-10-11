@@ -134,3 +134,25 @@ export function generatedClassNames(kind: GroupingKind, duration: number, startA
   const label = kind === "OTHER" || kind === "COHORT" ? "Stage" : GROUPING_LABELS[kind]
   return Array.from({ length: duration }, (_, i) => `${label} ${startAt + i}`)
 }
+
+const DEVANAGARI_DIGITS = "०१२३४५६७८९"
+
+export function toDevanagariDigits(value: string | number) {
+  return String(value).replace(/[0-9]/g, (d) => DEVANAGARI_DIGITS[Number(d)])
+}
+
+const LOCAL_ECD_NAMES: Record<string, string> = {
+  nursery: "नर्सरी",
+  playgroup: "प्ले ग्रुप",
+  lkg: "एल.के.जी.",
+  ukg: "यू.के.जी.",
+}
+
+// Suggested Nepali name for a class, as written in school registers:
+// "Grade 5" / "Class 5" → "कक्षा ५". Null when there's no obvious one.
+export function suggestLocalClassName(name: string) {
+  const trimmed = name.trim()
+  const grade = /^(?:grade|class)\s*(\d{1,2})$/i.exec(trimmed)
+  if (grade) return `कक्षा ${toDevanagariDigits(grade[1])}`
+  return LOCAL_ECD_NAMES[trimmed.toLowerCase().replace(/[\s.]/g, "")] ?? null
+}

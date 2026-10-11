@@ -425,6 +425,12 @@ export function NumberingTab({ structure, canManage }: Props) {
                 { value: "MANUAL", label: "Entered manually (optional)" },
               ]}
             />
+            <SwitchField
+              control={form.control}
+              name="enforceSectionCapacity"
+              label="Enforce section capacity"
+              description="Refuse admissions, promotions and section moves once a section (or a class without sections) reaches its capacity."
+            />
           </fieldset>
           {canManage && (
             <Button type="submit" className="justify-self-start" disabled={form.formState.isSubmitting}>

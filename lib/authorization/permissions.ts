@@ -65,9 +65,19 @@ export const PERMISSIONS = {
   "assignments.delete": "Delete assignments",
   "assignments.grade": "Grade assignments",
 
+  // Attendance. attendance.view alone opens one's own attendance (students,
+  // employees) and the registers of one's own classes (teachers); parents
+  // see their children through guardian links, never through a permission.
   "attendance.view": "View attendance",
+  "attendance.view_all": "View every class's student attendance, sessions and reports",
   "attendance.create": "Record attendance",
+  "attendance.manage": "Take and edit attendance for any class, section or subject",
   "attendance.update": "Correct attendance",
+  "attendance.approve": "Approve attendance corrections, lock and reopen registers",
+  "attendance.configure": "Configure the attendance policy and holidays",
+  "attendance.staff.view": "View teacher and staff attendance",
+  "attendance.staff.manage": "Record and correct teacher and staff attendance",
+  "attendance.export": "Export and import attendance",
 
   "exams.view": "View exams and results",
   "exams.create": "Create exams",
@@ -92,10 +102,21 @@ export const PERMISSIONS = {
   "parents.import": "Import guardians from a file",
   "parents.export": "Export guardian lists",
 
+  // Day-to-day class & section management. Placing students needs
+  // students.enroll; class and subject teachers need teachers.assignments.*.
+  "classes.view": "View classes and sections",
+  "classes.manage": "Create, edit and archive classes and sections",
+  "classes.export": "Export class lists, section lists and rosters",
+
+  // Subjects and courses: reusable definitions, curricula and the offerings
+  // of each class per academic year. Subject teachers use teachers.assignments.*.
+  "subjects.view": "View subjects and courses",
+  "subjects.manage": "Create, edit and archive subjects, categories, prerequisites and curricula",
+  "subjects.offerings.manage": "Decide which subjects each class studies in an academic year",
+  "subjects.export": "Export and import subject lists",
+
   // Modules not built yet: only view access for now. Add create/update/
   // delete keys when each module is built.
-  "classes.view": "View classes and sections",
-  "subjects.view": "View subjects and courses",
   "quizzes.view": "View quizzes and assessments",
   "results.view": "View grades and results",
   "communication.view": "Use messaging and announcements",
@@ -181,7 +202,17 @@ export const DEFAULT_ROLES = [
       "teachers.export",
       "academics.view",
       "academics.manage",
+      "classes.manage",
+      "classes.export",
+      "subjects.manage",
+      "subjects.offerings.manage",
+      "subjects.export",
       "attendance.view",
+      "attendance.view_all",
+      "attendance.approve",
+      "attendance.configure",
+      "attendance.staff.view",
+      "attendance.export",
       "exams.view",
       "reports.view",
       "staff.view",
@@ -219,6 +250,7 @@ export const DEFAULT_ROLES = [
       "students.documents.view",
       "students.documents.manage",
       "academics.view",
+      "classes.export",
       "parents.view",
       "parents.create",
       "parents.update",
@@ -288,9 +320,58 @@ export const DEFAULT_ROLES = [
       "staff.import",
       "staff.export",
       "staff.configure",
+      "attendance.view",
+      "attendance.staff.view",
+      "attendance.staff.manage",
+      "attendance.export",
       "members.view",
       "documents.view",
       "notifications.view",
+    ],
+  },
+  {
+    // Day-to-day attendance for every class; no correction approval, so
+    // their own changes to submitted registers are reviewed by someone else.
+    slug: "attendance_officer",
+    name: "Attendance Officer",
+    description: "Takes and maintains attendance for every class and section.",
+    permissions: [
+      "dashboard.view",
+      "students.view",
+      "academics.view",
+      "classes.view",
+      "subjects.view",
+      "notifications.view",
+      "attendance.view",
+      "attendance.view_all",
+      "attendance.create",
+      "attendance.update",
+      "attendance.manage",
+      "attendance.export",
+    ],
+  },
+  {
+    slug: "academic_coordinator",
+    name: "Academic Coordinator",
+    description: "Oversees classes, subjects and attendance; reviews corrections and reports.",
+    permissions: [
+      "dashboard.view",
+      "students.view",
+      "teachers.view",
+      "academics.view",
+      "classes.view",
+      "subjects.view",
+      "exams.view",
+      "results.view",
+      "reports.view",
+      "events.view",
+      "notifications.view",
+      "attendance.view",
+      "attendance.view_all",
+      "attendance.update",
+      "attendance.approve",
+      "attendance.staff.view",
+      "attendance.export",
     ],
   },
   {

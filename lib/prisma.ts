@@ -21,6 +21,13 @@ function createPrismaClient() {
       // Optional cap on pooled connections (e.g. 1 for single-connection
       // local test databases or small serverless functions).
       ...(process.env.DATABASE_POOL_MAX && { max: Number(process.env.DATABASE_POOL_MAX) }),
+      // Reuse open connections for longer (pg's default drops them after
+      // 10 s idle). Opening a connection to a remote pooler is the slow and
+      // fragile step: on lossy networks a TCP connect can stall for 7–21 s,
+      // which surfaced as random query failures. TCP keep-alive stops
+      // routers/NAT from silently dropping the idle ones.
+      idleTimeoutMillis: Number(process.env.DATABASE_POOL_IDLE_MS) || 5 * 60_000,
+      keepAlive: true,
     }),
     // Interactive transactions run many round trips to a remote (pooled)
     // database; the 5s default is too tight for multi-table writes.

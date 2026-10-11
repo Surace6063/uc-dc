@@ -13,9 +13,9 @@ import {
   getEducationStructure,
   saveDesignation,
   saveFaculty,
-  saveSubject,
 } from "@/services/academics/structure-service"
 import { prisma } from "@/lib/prisma"
+import { saveSubject } from "@/services/subjects/subject-service"
 import {
   archiveTeacher,
   changeEmployment,

@@ -11,6 +11,7 @@ import type { AuthContext } from "@/lib/authorization/context"
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/authorization/errors"
 import { PERMISSION_KEYS, type PermissionKey } from "@/lib/authorization/permissions"
 import { prisma } from "@/lib/prisma"
+import { deleteSubject, saveSubject } from "@/services/subjects/subject-service"
 import * as structure from "@/services/academics/structure-service"
 import { teacherDocumentUrl } from "@/services/teachers/document-service"
 import { exportTeachersCsv } from "@/services/teachers/export-service"
@@ -118,8 +119,8 @@ before(async () => {
   ids.grade8A = (await structure.saveSection(ctxA, null, { classId: ids.grade8, name: "A", isActive: true })).id
   ids.grade7A = (await structure.saveSection(ctxA, null, { classId: ids.grade7, name: "A", isActive: true })).id
   ids.year = (await structure.saveAcademicYear(ctxA, null, { name: "2083", startDate: "2026-04-14", endDate: "2027-04-13", status: "ACTIVE", isCurrent: true })).id
-  ids.math = (await structure.saveSubject(ctxA, null, { name: "Mathematics", code: "MATH", educationLevelId: basic.id, isActive: true })).id
-  ids.accounts = (await structure.saveSubject(ctxA, null, { name: "Accountancy", code: "ACC", programId: mgmt.id, isActive: true })).id
+  ids.math = (await saveSubject(ctxA, null, { name: "Mathematics", code: "MATH", educationLevelId: basic.id, isActive: true })).id
+  ids.accounts = (await saveSubject(ctxA, null, { name: "Accountancy", code: "ACC", programId: mgmt.id, isActive: true })).id
   ids.designation = (await structure.saveDesignation(ctxA, null, { name: "Teacher", isActive: true })).id
   ids.science = (await structure.saveFaculty(ctxA, null, { name: "Science Department", code: "SCI", isActive: true })).id
   ids.commerce = (await structure.saveFaculty(ctxA, null, { name: "Commerce Department", code: "COM", isActive: true })).id
@@ -355,7 +356,7 @@ describe("archive and delete", () => {
 
   it("blocks deleting a designation or subject that is in use", async () => {
     await rejects(structure.deleteDesignation(ctxA, ids.designation), ConflictError)
-    await rejects(structure.deleteSubject(ctxA, ids.math), ConflictError)
+    await rejects(deleteSubject(ctxA, ids.math), ConflictError)
   })
 })
 

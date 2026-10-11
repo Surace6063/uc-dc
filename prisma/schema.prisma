@@ -29,15 +29,20 @@ model User {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  memberships      OrganizationMember[]
-  platformAdmin    PlatformAdmin?
+  memberships                   OrganizationMember[]
+  platformAdmin                 PlatformAdmin?
   // Optional portal links: a student or guardian record can be tied to the
   // account that signs in for it (unique per organisation on those models).
-  studentProfiles  Student[]
-  guardianProfiles Guardian[]
-  teacherProfiles  Teacher[]
-  staffProfiles    Staff[]
-  auditLogs        AuditLog[]
+  studentProfiles               Student[]
+  guardianProfiles              Guardian[]
+  teacherProfiles               Teacher[]
+  staffProfiles                 Staff[]
+  auditLogs                     AuditLog[]
+  attendanceSessionsTaken       AttendanceSession[]    @relation("AttendanceSessionTakenBy")
+  studentAttendanceMarked       StudentAttendance[]    @relation("StudentAttendanceMarkedBy")
+  employeeAttendanceMarked      EmployeeAttendance[]   @relation("EmployeeAttendanceMarkedBy")
+  attendanceCorrectionsAsked    AttendanceCorrection[] @relation("AttendanceCorrectionRequestedBy")
+  attendanceCorrectionsReviewed AttendanceCorrection[] @relation("AttendanceCorrectionReviewedBy")
 
   @@map("users")
 }
@@ -79,6 +84,14 @@ model Organization {
   documentRequirements DocumentRequirement[]
   studentSettings      StudentSettings?
   subjects             Subject[]
+  subjectCategories    SubjectCategory[]
+  subjectPrerequisites SubjectPrerequisite[]
+  curricula            Curriculum[]
+  curriculumUnits      CurriculumUnit[]
+  curriculumTopics     CurriculumTopic[]
+  electiveGroups       ElectiveGroup[]
+  subjectOfferings     SubjectOffering[]
+  offeringSections     SubjectOfferingSection[]
   designations         Designation[]
   staffSettings        StaffSettings?
 
@@ -106,6 +119,15 @@ model Organization {
   staffQualifications    StaffQualification[]
   staffDocuments         StaffDocument[]
   staffAssignments       StaffAssignment[]
+
+  // Attendance.
+  attendancePolicy      AttendancePolicy?
+  holidays              Holiday[]
+  attendanceSessions    AttendanceSession[]
+  studentAttendance     StudentAttendance[]
+  employeeAttendance    EmployeeAttendance[]
+  attendanceCorrections AttendanceCorrection[]
+  attendanceAlerts      AttendanceAlert[]
 
   auditLogs AuditLog[]
 
@@ -210,6 +232,22 @@ enum NumberingMode {
   AUTOMATIC
 }
 
+// Many Nepali schools and colleges run separate morning and day shifts.
+enum SectionShift {
+  MORNING
+  DAY
+  EVENING
+}
+
+// Medium of instruction of a section (English, Nepali or mother tongue).
+enum InstructionMedium {
+  ENGLISH
+  NEPALI
+  BILINGUAL
+  MOTHER_TONGUE
+  OTHER
+}
+
 // Optional: Faculty of Management, Department of Science, ...
 model Faculty {
   id             String   @id @default(uuid()) @db.Uuid
@@ -255,7 +293,9 @@ model EducationLevel {
   enrollments          Enrollment[]
   documentRequirements DocumentRequirement[]
   subjects             Subject[]
+  curricula            Curriculum[]
   teacherAssignments   TeacherAssignment[]
+  holidays             Holiday[]
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
@@ -286,6 +326,7 @@ model Program {
   batches            Batch[]
   enrollments        Enrollment[]
   subjects           Subject[]
+  curricula          Curriculum[]
   teacherAssignments TeacherAssignment[]
 
   @@unique([organizationId, code])
@@ -302,10 +343,20 @@ model AcademicClass {
   educationLevelId String       @map("education_level_id") @db.Uuid
   programId        String?      @map("program_id") @db.Uuid
   name             String
+  // Optional name in Nepali (e.g. "कक्षा ५") for registers and report cards.
+  localName        String?      @map("local_name")
+  // Optional short code, unique within the organisation (e.g. G8, BBS-Y1).
+  code             String?
+  description      String?
   kind             GroupingKind @default(GRADE)
   // Position within the level/program; drives "promote to next class".
   sequence         Int          @default(1)
+  // Maximum students in the whole class (each section has its own capacity).
+  capacity         Int?
+  // Inactive classes take no new placements; archived ones are also hidden
+  // from day-to-day lists. Both keep every historical enrollment.
   isActive         Boolean      @default(true) @map("is_active")
+  archivedAt       DateTime?    @map("archived_at")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
@@ -315,31 +366,43 @@ model AcademicClass {
   sections           Section[]
   enrollments        Enrollment[]
   teacherAssignments TeacherAssignment[]
+  subjectOfferings   SubjectOffering[]
+  electiveGroups     ElectiveGroup[]
+  attendanceSessions AttendanceSession[]
 
   @@unique([id, organizationId])
   // Class names are unique within their level (no program) or program.
   @@unique([educationLevelId, name], map: "academic_classes_level_name_key", where: raw("program_id IS NULL"))
   @@unique([programId, name], map: "academic_classes_program_name_key", where: raw("program_id IS NOT NULL"))
+  @@unique([organizationId, code], map: "academic_classes_code_key", where: raw("code IS NOT NULL"))
   @@index([organizationId, educationLevelId, programId, sequence])
   @@map("academic_classes")
 }
 
-// A, B, Morning, Evening, ... within one class.
+// A, B, क, ख, Morning, ... within one class.
 model Section {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  classId        String   @map("class_id") @db.Uuid
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  classId        String             @map("class_id") @db.Uuid
   name           String
+  code           String?
+  description    String?
   capacity       Int?
-  isActive       Boolean  @default(true) @map("is_active")
-  sortOrder      Int      @default(0) @map("sort_order")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  shift          SectionShift?
+  medium         InstructionMedium?
+  room           String?
+  isActive       Boolean            @default(true) @map("is_active")
+  sortOrder      Int                @default(0) @map("sort_order")
+  archivedAt     DateTime?          @map("archived_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  class              AcademicClass       @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class              AcademicClass            @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
   enrollments        Enrollment[]
   teacherAssignments TeacherAssignment[]
+  subjectOfferings   SubjectOfferingSection[]
+  attendanceSessions AttendanceSession[]
 
   @@unique([classId, name])
   @@unique([id, organizationId])
@@ -364,6 +427,8 @@ model Batch {
   program            Program?            @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
   enrollments        Enrollment[]
   teacherAssignments TeacherAssignment[]
+  subjectOfferings   SubjectOffering[]
+  electiveGroups     ElectiveGroup[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -386,6 +451,9 @@ model AcademicYear {
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   enrollments        Enrollment[]
   teacherAssignments TeacherAssignment[]
+  electiveGroups     ElectiveGroup[]
+  subjectOfferings   SubjectOffering[]
+  attendanceSessions AttendanceSession[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -435,6 +503,8 @@ model StudentSettings {
   // Next value to hand out; incremented atomically (UPDATE ... RETURNING).
   nextAdmissionSequence  Int           @default(1) @map("next_admission_sequence")
   rollNumberMode         NumberingMode @default(AUTOMATIC) @map("roll_number_mode")
+  // Refuse placements beyond a section's (or sectionless class's) capacity.
+  enforceSectionCapacity Boolean       @default(false) @map("enforce_section_capacity")
   // Guardian IDs share the padding above; numbers taken by hand are skipped.
   guardianCodePrefix     String        @default("GRD-") @map("guardian_code_prefix")
   nextGuardianSequence   Int           @default(1) @map("next_guardian_sequence")
@@ -549,13 +619,15 @@ model Student {
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt @map("updated_at")
 
-  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user          User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
-  addresses     StudentAddress[]
-  guardians     StudentGuardian[]
-  enrollments   Enrollment[]
-  documents     StudentDocument[]
-  statusHistory StudentStatusHistory[]
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  addresses        StudentAddress[]
+  guardians        StudentGuardian[]
+  enrollments      Enrollment[]
+  documents        StudentDocument[]
+  statusHistory    StudentStatusHistory[]
+  attendance       StudentAttendance[]
+  attendanceAlerts AttendanceAlert[]
 
   @@unique([organizationId, admissionNumber])
   @@unique([id, organizationId])
@@ -774,16 +846,17 @@ model Enrollment {
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  student            Student        @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  academicYear       AcademicYear   @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  educationLevel     EducationLevel @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  program            Program?       @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  class              AcademicClass  @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  section            Section?       @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
-  batch              Batch?         @relation(fields: [batchId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  previousEnrollment Enrollment?    @relation("EnrollmentProgression", fields: [previousEnrollmentId], references: [id], onDelete: SetNull)
-  nextEnrollment     Enrollment?    @relation("EnrollmentProgression")
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student            Student             @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  academicYear       AcademicYear        @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  educationLevel     EducationLevel      @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program            Program?            @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class              AcademicClass       @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  section            Section?            @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  batch              Batch?              @relation(fields: [batchId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  previousEnrollment Enrollment?         @relation("EnrollmentProgression", fields: [previousEnrollmentId], references: [id], onDelete: SetNull)
+  nextEnrollment     Enrollment?         @relation("EnrollmentProgression")
+  attendance         StudentAttendance[]
 
   // At most one ACTIVE placement per student per academic year.
   @@unique([studentId, academicYearId], map: "enrollments_one_active_per_year_key", where: raw("status = 'ACTIVE'"))
@@ -791,6 +864,8 @@ model Enrollment {
   @@unique([academicYearId, classId, sectionId, rollNumber], map: "enrollments_roll_number_key", where: raw("status = 'ACTIVE' AND roll_number IS NOT NULL"))
   // Same rule for classes without sections (NULLs never collide in the index above).
   @@unique([academicYearId, classId, rollNumber], map: "enrollments_roll_number_no_section_key", where: raw("status = 'ACTIVE' AND roll_number IS NOT NULL AND section_id IS NULL"))
+  // Lets attendance records reference (enrollment, student) together.
+  @@unique([id, studentId])
   @@index([organizationId, academicYearId, status])
   @@index([organizationId, educationLevelId])
   @@index([organizationId, programId])
@@ -934,30 +1009,296 @@ enum AssignmentStatus {
   CANCELLED
 }
 
-// Subjects and courses, optionally tied to a level or program. A minimal
-// catalogue for teaching assignments; the Subjects/LMS modules extend it.
-model Subject {
-  id               String   @id @default(uuid()) @db.Uuid
-  organizationId   String   @map("organization_id") @db.Uuid
-  educationLevelId String?  @map("education_level_id") @db.Uuid
-  programId        String?  @map("program_id") @db.Uuid
-  name             String
-  code             String
-  creditHours      Int?     @map("credit_hours")
-  isActive         Boolean  @default(true) @map("is_active")
-  sortOrder        Int      @default(0) @map("sort_order")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+// ============================================================== subjects
+//
+// A subject (or course) is a reusable definition: "Mathematics", "BBS Business
+// Statistics". Where and when it is taught is a SubjectOffering (a class in
+// an academic year); what should be taught is a versioned Curriculum; who
+// teaches it is a TeacherAssignment. Exams, timetables, attendance and LMS
+// spaces attach to the offering, never to the subject itself.
 
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  educationLevel EducationLevel?     @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  program        Program?            @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+// The default role of a subject in a class; each offering can differ.
+enum SubjectRequirement {
+  COMPULSORY
+  ELECTIVE
+  OPTIONAL
+  ADDITIONAL
+}
+
+enum CurriculumStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum CurriculumComponent {
+  THEORY
+  PRACTICAL
+  PROJECT
+  MIXED
+}
+
+enum OfferingStatus {
+  ACTIVE
+  DISCONTINUED
+}
+
+enum PrerequisiteKind {
+  REQUIRED
+  RECOMMENDED
+}
+
+// Organisation-defined classification: Language, Science, Vocational, ...
+model SubjectCategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subjects     Subject[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@map("subject_categories")
+}
+
+model Subject {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @map("organization_id") @db.Uuid
+  educationLevelId String?            @map("education_level_id") @db.Uuid
+  programId        String?            @map("program_id") @db.Uuid
+  categoryId       String?            @map("category_id") @db.Uuid
+  name             String
+  // Optional name in Nepali (e.g. "गणित") for report cards.
+  localName        String?            @map("local_name")
+  // Unique within the organisation (e.g. NEB codes such as 0081, or MGT201).
+  code             String
+  description      String?
+  requirement      SubjectRequirement @default(COMPULSORY)
+  // Decimal credit hours are common (e.g. 3.75); all teaching numbers are optional.
+  creditHours      Float?             @map("credit_hours")
+  theoryHours      Int?               @map("theory_hours")
+  practicalHours   Int?               @map("practical_hours")
+  weeklyPeriods    Int?               @map("weekly_periods")
+  medium           InstructionMedium?
+  isActive         Boolean            @default(true) @map("is_active")
+  archivedAt       DateTime?          @map("archived_at")
+  sortOrder        Int                @default(0) @map("sort_order")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel EducationLevel?       @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program        Program?              @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  category       SubjectCategory?      @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: NoAction)
   assignments    TeacherAssignment[]
+  curricula      Curriculum[]
+  offerings      SubjectOffering[]
+  prerequisites  SubjectPrerequisite[] @relation("SubjectPrerequisites")
+  requiredFor    SubjectPrerequisite[] @relation("PrerequisiteOf")
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
   @@index([organizationId, educationLevelId, programId])
+  @@index([organizationId, archivedAt, name])
   @@map("subjects")
+}
+
+// "Accountancy needs Business Studies". Cycles and self-references are
+// refused by the service (and self-references by a CHECK constraint).
+model SubjectPrerequisite {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  subjectId      String           @map("subject_id") @db.Uuid
+  prerequisiteId String           @map("prerequisite_id") @db.Uuid
+  kind           PrerequisiteKind @default(REQUIRED)
+  // Free text such as "C+" or "Pass"; checked by the results module later.
+  minimumGrade   String?          @map("minimum_grade")
+  note           String?
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation("SubjectPrerequisites", fields: [subjectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  prerequisite Subject      @relation("PrerequisiteOf", fields: [prerequisiteId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@unique([subjectId, prerequisiteId])
+  @@index([organizationId, prerequisiteId])
+  @@map("subject_prerequisites")
+}
+
+// What should be taught: a versioned syllabus for a subject (optionally for
+// one level or program). Only drafts are edited; a change to an active
+// syllabus is a new version, so offerings keep the version they used.
+model Curriculum {
+  id                String           @id @default(uuid()) @db.Uuid
+  organizationId    String           @map("organization_id") @db.Uuid
+  subjectId         String           @map("subject_id") @db.Uuid
+  educationLevelId  String?          @map("education_level_id") @db.Uuid
+  programId         String?          @map("program_id") @db.Uuid
+  name              String
+  code              String?
+  // Free text: "2078", "v2", "2024 revision".
+  version           String
+  description       String?
+  status            CurriculumStatus @default(DRAFT)
+  effectiveFrom     DateTime?        @map("effective_from") @db.Date
+  effectiveTo       DateTime?        @map("effective_to") @db.Date
+  previousVersionId String?          @map("previous_version_id") @db.Uuid
+  // Official syllabus file (private bucket path, never a public URL).
+  documentPath      String?          @map("document_path")
+  documentName      String?          @map("document_name")
+  documentType      String?          @map("document_type")
+  documentSize      Int?             @map("document_size")
+  createdById       String?          @map("created_by_id") @db.Uuid
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subject         Subject           @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  educationLevel  EducationLevel?   @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program         Program?          @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  previousVersion Curriculum?       @relation("CurriculumVersions", fields: [previousVersionId], references: [id], onDelete: SetNull)
+  nextVersions    Curriculum[]      @relation("CurriculumVersions")
+  units           CurriculumUnit[]
+  offerings       SubjectOffering[]
+
+  @@unique([subjectId, name, version])
+  @@unique([id, organizationId])
+  @@unique([id, subjectId])
+  @@index([organizationId, subjectId, status])
+  @@map("curricula")
+}
+
+// A unit or chapter of a curriculum.
+model CurriculumUnit {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @map("organization_id") @db.Uuid
+  curriculumId       String              @map("curriculum_id") @db.Uuid
+  title              String
+  description        String?
+  sequence           Int                 @default(1)
+  component          CurriculumComponent @default(THEORY)
+  estimatedHours     Int?                @map("estimated_hours")
+  learningObjectives String?             @map("learning_objectives")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  curriculum   Curriculum        @relation(fields: [curriculumId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  topics       CurriculumTopic[]
+
+  @@unique([id, organizationId])
+  @@index([curriculumId, sequence])
+  @@map("curriculum_units")
+}
+
+model CurriculumTopic {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  unitId             String   @map("unit_id") @db.Uuid
+  title              String
+  description        String?
+  sequence           Int      @default(1)
+  estimatedHours     Int?     @map("estimated_hours")
+  learningObjectives String?  @map("learning_objectives")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         CurriculumUnit @relation(fields: [unitId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([unitId, sequence])
+  @@map("curriculum_topics")
+}
+
+// "Optional I", "Elective group A": a set of offerings of one class in one
+// year from which students choose between minChoices and maxChoices.
+model ElectiveGroup {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  name           String
+  description    String?
+  minChoices     Int      @default(1) @map("min_choices")
+  maxChoices     Int      @default(1) @map("max_choices")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear      @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class        AcademicClass     @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  offerings    SubjectOffering[]
+  batch        Batch?            @relation(fields: [batchId], references: [id])
+  batchId      String?           @db.Uuid
+
+  @@unique([academicYearId, classId, name])
+  @@unique([id, organizationId])
+  @@map("elective_groups")
+}
+
+// A subject taught in one class (grade, year, semester, cohort) in one
+// academic year. Past years' offerings are never rewritten by later changes.
+model SubjectOffering {
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @map("organization_id") @db.Uuid
+  subjectId       String             @map("subject_id") @db.Uuid
+  academicYearId  String             @map("academic_year_id") @db.Uuid
+  classId         String             @map("class_id") @db.Uuid
+  curriculumId    String?            @map("curriculum_id") @db.Uuid
+  electiveGroupId String?            @map("elective_group_id") @db.Uuid
+  requirement     SubjectRequirement @default(COMPULSORY)
+  // Offering-specific values; null means "use the subject's".
+  creditHours     Float?             @map("credit_hours")
+  weeklyPeriods   Int?               @map("weekly_periods")
+  code            String?
+  status          OfferingStatus     @default(ACTIVE)
+  notes           String?
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subject            Subject                  @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  academicYear       AcademicYear             @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class              AcademicClass            @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  // The curriculum must be one of this subject's.
+  curriculum         Curriculum?              @relation(fields: [curriculumId, subjectId], references: [id, subjectId], onDelete: NoAction)
+  electiveGroup      ElectiveGroup?           @relation(fields: [electiveGroupId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  sections           SubjectOfferingSection[]
+  batch              Batch?                   @relation(fields: [batchId], references: [id])
+  batchId            String?                  @db.Uuid
+  attendanceSessions AttendanceSession[]
+
+  @@unique([academicYearId, classId, subjectId])
+  @@unique([id, organizationId])
+  @@unique([id, classId])
+  @@index([organizationId, subjectId])
+  @@index([organizationId, academicYearId, classId])
+  @@map("subject_offerings")
+}
+
+// Limits an offering to some sections of its class (an elective taught only
+// in section B). No rows means every section. The section is checked against
+// the offering's class by the database itself.
+model SubjectOfferingSection {
+  offeringId     String   @map("offering_id") @db.Uuid
+  sectionId      String   @map("section_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  offering     SubjectOffering @relation(fields: [offeringId, classId], references: [id, classId], onDelete: Cascade)
+  section      Section         @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+
+  @@id([offeringId, sectionId])
+  @@index([sectionId])
+  @@map("subject_offering_sections")
 }
 
 // Who a designation is offered to. A job title is never a permission.
@@ -1081,6 +1422,7 @@ model Teacher {
   certifications    TeacherCertification[]
   documents         TeacherDocument[]
   assignments       TeacherAssignment[]
+  attendance        EmployeeAttendance[]
 
   @@unique([organizationId, employeeId])
   @@unique([id, organizationId])
@@ -1399,6 +1741,7 @@ model Staff {
   qualifications    StaffQualification[]
   documents         StaffDocument[]
   assignments       StaffAssignment[]
+  attendance        EmployeeAttendance[]
 
   @@unique([organizationId, employeeId])
   @@unique([id, organizationId])
@@ -1544,4 +1887,341 @@ model StaffAssignment {
   @@index([organizationId, status])
   @@index([staffId, status])
   @@map("staff_assignments")
+}
+
+// ============================================================== attendance
+//
+// Attendance is taken in sessions (one register: Grade 8 A on a date, or
+// Grade 11 Science A's Physics period 2), each holding one record per
+// student actually marked. A student without a record was not marked; that
+// is never read as absent. Teacher and staff attendance is a separate, per-
+// day record because its rules (check-in, leave, employment dates) differ.
+// Every rule that varies between institutions lives in AttendancePolicy.
+
+// What a session covers: the whole day (optionally in slots, e.g. morning and
+// afternoon) or one period of one subject offering.
+enum AttendanceSessionType {
+  DAILY
+  PERIOD
+}
+
+// DRAFT: still being taken. SUBMITTED: final; changes go through corrections.
+// LOCKED: closed; only someone allowed to approve can reopen it.
+enum AttendanceSessionStatus {
+  DRAFT
+  SUBMITTED
+  LOCKED
+}
+
+// One controlled list for students and employees. How each status counts
+// towards percentages is decided by the policy (features/attendance/
+// calculation.ts), never by the client.
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ABSENT
+  EXCUSED
+  ON_LEAVE
+}
+
+// How excused absences and approved leave affect percentages.
+enum ExcusedTreatment {
+  // Left out of both attended and conducted sessions.
+  EXCLUDE
+  COUNT_AS_ABSENT
+  COUNT_AS_PRESENT
+}
+
+enum AttendanceCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum EmployeeType {
+  TEACHER
+  STAFF
+}
+
+enum AttendanceSource {
+  MANUAL
+  SELF_SERVICE
+  IMPORT
+  // Reserved for a future biometric/RFID integration; nothing writes it yet.
+  DEVICE
+}
+
+enum HolidayAudience {
+  ALL
+  STUDENTS
+  EMPLOYEES
+}
+
+enum AttendanceAlertKind {
+  BELOW_THRESHOLD
+  APPROACHING_THRESHOLD
+}
+
+// Per-organisation attendance rules. A missing row means the defaults below.
+model AttendancePolicy {
+  organizationId             String            @id @map("organization_id") @db.Uuid
+  // Which kinds of student registers this institution keeps.
+  dailyEnabled               Boolean           @default(true) @map("daily_enabled")
+  periodEnabled              Boolean           @default(false) @map("period_enabled")
+  // Daily registers per day: 1 (full day) or 2 (morning and afternoon).
+  dailySlots                 Int               @default(1) @map("daily_slots")
+  // Highest period number offered in the period picker (not a timetable).
+  maxPeriodsPerDay           Int               @default(8) @map("max_periods_per_day")
+  // Status a new register starts with in the form; null starts unmarked.
+  // Nothing is recorded until someone saves.
+  defaultStatus              AttendanceStatus? @default(PRESENT) @map("default_status")
+  halfDayEnabled             Boolean           @default(false) @map("half_day_enabled")
+  lateCountsAsPresent        Boolean           @default(true) @map("late_counts_as_present")
+  excusedTreatment           ExcusedTreatment  @default(EXCLUDE) @map("excused_treatment")
+  minimumPercentage          Int               @default(75) @map("minimum_percentage")
+  // "Approaching" = below minimum + margin.
+  warningMarginPercentage    Int               @default(5) @map("warning_margin_percentage")
+  // Corrections by people without attendance.approve wait for a reviewer.
+  correctionsRequireApproval Boolean           @default(true) @map("corrections_require_approval")
+  // Submitted registers older than this many days count as locked.
+  lockAfterDays              Int?              @map("lock_after_days")
+  // 0 = Sunday … 6 = Saturday. Saturday is the usual weekly holiday in Nepal.
+  weeklyOffDays              Int[]             @default([6]) @map("weekly_off_days")
+  allowOnNonWorkingDays      Boolean           @default(false) @map("allow_on_non_working_days")
+  notifyGuardiansOnAbsence   Boolean           @default(false) @map("notify_guardians_on_absence")
+  notifyGuardiansOnLate      Boolean           @default(false) @map("notify_guardians_on_late")
+  // Teacher and staff attendance.
+  employeeAttendanceEnabled  Boolean           @default(true) @map("employee_attendance_enabled")
+  employeeSelfCheckIn        Boolean           @default(false) @map("employee_self_check_in")
+  // "HH:MM" local time the working day starts, and minutes of grace before
+  // a check-in counts as late.
+  workdayStartTime           String            @default("10:00") @map("workday_start_time")
+  lateGraceMinutes           Int               @default(10) @map("late_grace_minutes")
+  updatedAt                  DateTime          @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_policies")
+}
+
+// Public and institution holidays (Dashain, Tihar, exam breaks, ...). Weekly
+// off days come from the policy. Dates are inclusive.
+model Holiday {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String          @map("organization_id") @db.Uuid
+  name             String
+  startDate        DateTime        @map("start_date") @db.Date
+  endDate          DateTime        @map("end_date") @db.Date
+  appliesTo        HolidayAudience @default(ALL) @map("applies_to")
+  // Optional: a holiday for one education level only (e.g. +2 exam leave).
+  educationLevelId String?         @map("education_level_id") @db.Uuid
+  description      String?
+  createdById      String?         @map("created_by_id") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel EducationLevel? @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@index([organizationId, startDate, endDate])
+  @@map("holidays")
+}
+
+// One register. The scope (year, class, section, subject offering, date,
+// slot) never changes after creation; scope_key ("DAILY:1",
+// "PERIOD:<offering>:3") is copied onto each record so the database itself
+// refuses marking a student twice for the same thing on the same day.
+model AttendanceSession {
+  id                String                  @id @default(uuid()) @db.Uuid
+  organizationId    String                  @map("organization_id") @db.Uuid
+  academicYearId    String                  @map("academic_year_id") @db.Uuid
+  sessionType       AttendanceSessionType   @map("session_type")
+  date              DateTime                @db.Date
+  // Daily slot (1 = full day/morning, 2 = afternoon) or period number.
+  slot              Int                     @default(1)
+  scopeKey          String                  @map("scope_key")
+  classId           String                  @map("class_id") @db.Uuid
+  // Null: the whole class (a class without sections, or a combined lecture).
+  sectionId         String?                 @map("section_id") @db.Uuid
+  // Required for PERIOD sessions, absent for DAILY ones (CHECK constraint).
+  subjectOfferingId String?                 @map("subject_offering_id") @db.Uuid
+  status            AttendanceSessionStatus @default(DRAFT)
+  notes             String?
+  takenById         String?                 @map("taken_by_id") @db.Uuid
+  submittedById     String?                 @map("submitted_by_id") @db.Uuid
+  submittedAt       DateTime?               @map("submitted_at")
+  lockedById        String?                 @map("locked_by_id") @db.Uuid
+  lockedAt          DateTime?               @map("locked_at")
+  // Guardian notices are prepared once, on first submission.
+  notifiedAt        DateTime?               @map("notified_at")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicYear    AcademicYear        @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class           AcademicClass       @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  section         Section?            @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  // The offering must be one of this class's.
+  subjectOffering SubjectOffering?    @relation(fields: [subjectOfferingId, classId], references: [id, classId], onDelete: NoAction)
+  takenBy         User?               @relation("AttendanceSessionTakenBy", fields: [takenById], references: [id], onDelete: SetNull)
+  records         StudentAttendance[]
+
+  @@unique([id, organizationId])
+  @@unique([classId, date, scopeKey], map: "attendance_sessions_class_scope_key", where: raw("section_id IS NULL"))
+  @@unique([sectionId, date, scopeKey], map: "attendance_sessions_section_scope_key", where: raw("section_id IS NOT NULL"))
+  @@index([organizationId, date, status])
+  @@index([organizationId, academicYearId, classId, date])
+  @@index([organizationId, subjectOfferingId, date])
+  @@map("attendance_sessions")
+}
+
+// One student's attendance in one session. Year, class, offering, date and
+// scope are copied from the session (and the section from the student's
+// enrollment) when the record is created, for reporting without joins.
+model StudentAttendance {
+  id                String                @id @default(uuid()) @db.Uuid
+  organizationId    String                @map("organization_id") @db.Uuid
+  sessionId         String                @map("session_id") @db.Uuid
+  studentId         String                @map("student_id") @db.Uuid
+  enrollmentId      String                @map("enrollment_id") @db.Uuid
+  academicYearId    String                @map("academic_year_id") @db.Uuid
+  classId           String                @map("class_id") @db.Uuid
+  sectionId         String?               @map("section_id") @db.Uuid
+  subjectOfferingId String?               @map("subject_offering_id") @db.Uuid
+  sessionType       AttendanceSessionType @map("session_type")
+  date              DateTime              @db.Date
+  scopeKey          String                @map("scope_key")
+  status            AttendanceStatus
+  checkInAt         DateTime?             @map("check_in_at")
+  checkOutAt        DateTime?             @map("check_out_at")
+  lateMinutes       Int?                  @map("late_minutes")
+  // Shared with the student and guardians (e.g. "fever").
+  reason            String?
+  // Internal staff note; never shown in the portals.
+  remarks           String?
+  markedById        String?               @map("marked_by_id") @db.Uuid
+  correctedById     String?               @map("corrected_by_id") @db.Uuid
+  correctedAt       DateTime?             @map("corrected_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  session      AttendanceSession      @relation(fields: [sessionId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  student      Student                @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  // The enrollment must be this student's.
+  enrollment   Enrollment             @relation(fields: [enrollmentId, studentId], references: [id, studentId], onDelete: NoAction)
+  markedBy     User?                  @relation("StudentAttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  corrections  AttendanceCorrection[]
+
+  @@unique([sessionId, studentId])
+  @@unique([id, organizationId])
+  // Never two marks for the same student, day and daily slot / subject period.
+  @@unique([studentId, date, scopeKey])
+  @@index([organizationId, date, status])
+  @@index([organizationId, academicYearId, classId, sectionId, date])
+  @@index([organizationId, subjectOfferingId, date])
+  @@index([studentId, academicYearId, date])
+  @@map("student_attendance")
+}
+
+// A teacher's or staff member's attendance for one working day.
+model EmployeeAttendance {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  employeeType   EmployeeType     @map("employee_type")
+  teacherId      String?          @map("teacher_id") @db.Uuid
+  staffId        String?          @map("staff_id") @db.Uuid
+  date           DateTime         @db.Date
+  status         AttendanceStatus
+  checkInAt      DateTime?        @map("check_in_at")
+  checkOutAt     DateTime?        @map("check_out_at")
+  lateMinutes    Int?             @map("late_minutes")
+  reason         String?
+  remarks        String?
+  source         AttendanceSource @default(MANUAL)
+  markedById     String?          @map("marked_by_id") @db.Uuid
+  correctedById  String?          @map("corrected_by_id") @db.Uuid
+  correctedAt    DateTime?        @map("corrected_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher      Teacher?               @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  staff        Staff?                 @relation(fields: [staffId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  markedBy     User?                  @relation("EmployeeAttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  corrections  AttendanceCorrection[]
+
+  @@unique([teacherId, date])
+  @@unique([staffId, date])
+  @@unique([id, organizationId])
+  @@index([organizationId, date, status])
+  @@index([organizationId, employeeType, date])
+  @@map("employee_attendance")
+}
+
+// Every change to a submitted record, applied or requested. The before and
+// after values are kept, so corrections never overwrite history.
+model AttendanceCorrection {
+  id                   String                     @id @default(uuid()) @db.Uuid
+  organizationId       String                     @map("organization_id") @db.Uuid
+  // Exactly one of these (CHECK constraint).
+  studentAttendanceId  String?                    @map("student_attendance_id") @db.Uuid
+  employeeAttendanceId String?                    @map("employee_attendance_id") @db.Uuid
+  fromStatus           AttendanceStatus           @map("from_status")
+  toStatus             AttendanceStatus           @map("to_status")
+  fromLateMinutes      Int?                       @map("from_late_minutes")
+  toLateMinutes        Int?                       @map("to_late_minutes")
+  fromReason           String?                    @map("from_reason")
+  toReason             String?                    @map("to_reason")
+  // Why the change is needed (required).
+  justification        String
+  status               AttendanceCorrectionStatus @default(PENDING)
+  requestedById        String?                    @map("requested_by_id") @db.Uuid
+  reviewedById         String?                    @map("reviewed_by_id") @db.Uuid
+  reviewedAt           DateTime?                  @map("reviewed_at")
+  reviewNote           String?                    @map("review_note")
+  appliedAt            DateTime?                  @map("applied_at")
+  createdAt            DateTime                   @default(now()) @map("created_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  studentAttendance  StudentAttendance?  @relation(fields: [studentAttendanceId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  employeeAttendance EmployeeAttendance? @relation(fields: [employeeAttendanceId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  requestedBy        User?               @relation("AttendanceCorrectionRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  reviewedBy         User?               @relation("AttendanceCorrectionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  // At most one open request per record.
+  @@unique([studentAttendanceId], map: "attendance_corrections_one_pending_student_key", where: raw("status = 'PENDING'"))
+  @@unique([employeeAttendanceId], map: "attendance_corrections_one_pending_employee_key", where: raw("status = 'PENDING'"))
+  @@index([organizationId, status, createdAt])
+  @@index([studentAttendanceId])
+  @@index([employeeAttendanceId])
+  @@map("attendance_corrections")
+}
+
+// Shortage alerts already raised, so the same issue isn't announced again
+// in the same month. Delivery goes through the guardian notification
+// boundary (features/guardians/notifications.ts).
+model AttendanceAlert {
+  id                String              @id @default(uuid()) @db.Uuid
+  organizationId    String              @map("organization_id") @db.Uuid
+  studentId         String              @map("student_id") @db.Uuid
+  academicYearId    String              @map("academic_year_id") @db.Uuid
+  // "OVERALL" or "OFFERING:<id>".
+  scope             String
+  kind              AttendanceAlertKind
+  // "YYYY-MM": one alert per issue per month.
+  period            String
+  percentage        Float
+  guardiansNotified Int                 @default(0) @map("guardians_notified")
+  createdById       String?             @map("created_by_id") @db.Uuid
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([studentId, academicYearId, scope, kind, period])
+  @@index([organizationId, createdAt])
+  @@map("attendance_alerts")
 }

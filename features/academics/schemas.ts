@@ -4,7 +4,9 @@ import {
   AcademicYearStatus,
   DocumentAudience,
   GroupingKind,
+  InstructionMedium,
   NumberingMode,
+  SectionShift,
 } from "@/lib/generated/prisma/enums"
 import {
   dateString,
@@ -22,6 +24,13 @@ const code = z
   .max(20, "Use at most 20 characters.")
   .regex(/^[A-Za-z0-9_.+-]+$/, "Use letters, numbers, - _ . or + only.")
   .transform((value) => value.toUpperCase())
+
+// A select whose "" option means "not set".
+export const optionalEnum = <T extends Record<string, string>>(values: T) =>
+  z
+    .union([z.enum(values), z.literal("")])
+    .nullish()
+    .transform((value) => (value || null) as T[keyof T] | null)
 
 const sortOrder = optionalInt(0, 9999).transform((value) => value ?? 0)
 
@@ -61,19 +70,37 @@ export const generateClassesSchema = z.object({
   startAt: optionalInt(1, 20).transform((value) => value ?? 1),
 })
 
+// Optional short code (classes, sections): "" means none.
+const optionalCode = z
+  .string()
+  .trim()
+  .max(20, "Use at most 20 characters.")
+  .regex(/^[A-Za-z0-9_.+-]*$/, "Use letters, numbers, - _ . or + only.")
+  .nullish()
+  .transform((value) => (value ? value.toUpperCase() : null))
+
 export const academicClassSchema = z.object({
   educationLevelId: requiredId("Choose an education level."),
   programId: optionalId,
   name: requiredText("Enter the class name.", 60),
+  localName: optionalText(60),
+  code: optionalCode,
+  description: optionalText(300),
   kind: z.enum(GroupingKind),
   sequence: optionalInt(0, 999).transform((value) => value ?? 1),
+  capacity: optionalInt(1, 5000),
   isActive: z.boolean(),
 })
 
 export const sectionSchema = z.object({
   classId: requiredId("Choose a class."),
   name: requiredText("Enter the section name.", 40),
+  code: optionalCode,
+  description: optionalText(300),
   capacity: optionalInt(1, 2000),
+  shift: optionalEnum(SectionShift),
+  medium: optionalEnum(InstructionMedium),
+  room: optionalText(40),
   isActive: z.boolean(),
   sortOrder,
 })
@@ -123,16 +150,6 @@ export const documentRequirementSchema = z
   // Levels only apply to students.
   .transform((v) => (v.audience === "TEACHER" ? { ...v, educationLevelId: null } : v))
 
-export const subjectSchema = z.object({
-  name: requiredText("Enter the subject name."),
-  code,
-  educationLevelId: optionalId,
-  programId: optionalId,
-  creditHours: optionalInt(0, 50),
-  isActive: z.boolean(),
-  sortOrder,
-})
-
 export const designationSchema = z.object({
   name: requiredText("Enter the designation.", 80),
   isActive: z.boolean(),
@@ -160,6 +177,7 @@ export const studentSettingsSchema = z.object({
   admissionNumberPadding: optionalInt(1, 10).transform((value) => value ?? 5),
   nextAdmissionSequence: optionalInt(1, 99_999_999).transform((value) => value ?? 1),
   rollNumberMode: z.enum(NumberingMode),
+  enforceSectionCapacity: z.boolean().default(false),
 })
 
 export type EducationLevelInput = z.input<typeof educationLevelSchema>
@@ -171,7 +189,6 @@ export type FacultyInput = z.input<typeof facultySchema>
 export type BatchInput = z.input<typeof batchSchema>
 export type DocumentRequirementInput = z.input<typeof documentRequirementSchema>
 export type StudentSettingsInput = z.input<typeof studentSettingsSchema>
-export type SubjectInput = z.input<typeof subjectSchema>
 export type DesignationInput = z.input<typeof designationSchema>
 export type StaffSettingsInput = z.input<typeof staffSettingsSchema>
 export type GenerateClassesInput = z.input<typeof generateClassesSchema>
