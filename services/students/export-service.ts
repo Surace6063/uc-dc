@@ -1,6 +1,18 @@
 import "server-only"
 
-import { ENROLLMENT_STATUS_LABELS, GENDER_LABELS, RELATIONSHIP_LABELS, STUDENT_STATUS_LABELS, ADMISSION_TYPE_LABELS, fullName } from "@/features/students/constants"
+import {
+  ADMISSION_TYPE_LABELS,
+  CASTE_ETHNICITY_LABELS,
+  DISABILITY_LABELS,
+  ENROLLMENT_STATUS_LABELS,
+  fullName,
+  GENDER_LABELS,
+  PREVIOUS_QUALIFICATION_LABELS,
+  RELATIONSHIP_LABELS,
+  SCHOLARSHIP_LABELS,
+  STUDENT_STATUS_LABELS,
+  yesNo,
+} from "@/features/students/constants"
 import type { StudentFilters } from "@/features/students/filters"
 import { hasPermission, type AuthContext } from "@/lib/authorization/context"
 import { csvLine } from "@/lib/csv"
@@ -44,7 +56,16 @@ export const EXPORT_COLUMNS: readonly Column[] = [
   { key: "province", header: "Province" },
   { key: "district", header: "District" },
   { key: "municipality", header: "Municipality" },
+  { key: "previousQualification", header: "Previous qualification" },
+  { key: "previousResult", header: "Previous result" },
+  { key: "entranceScore", header: "Entrance score" },
+  { key: "scholarship", header: "Scholarship on admission" },
+  { key: "casteEthnicity", header: "Caste / ethnicity" },
+  { key: "economicallyDisadvantaged", header: "Economically disadvantaged" },
+  { key: "firstGenerationLearner", header: "First-generation learner" },
+  { key: "remoteArea", header: "Rural / remote area" },
   { key: "medicalNotes", header: "Medical notes", sensitive: true },
+  { key: "disability", header: "Disability", sensitive: true },
 ]
 
 // Streams a CSV of the students matching the same filters as the table
@@ -81,7 +102,9 @@ export async function exportStudentsCsv(
           select: {
             admissionNumber: true, firstName: true, middleName: true, lastName: true,
             gender: true, dateOfBirth: true, status: true, admissionDate: true, admissionType: true,
-            email: true, phone: true, medicalNotes: sensitive,
+            email: true, phone: true, medicalNotes: sensitive, disabilityType: sensitive,
+            previousQualification: true, previousResult: true, entranceScore: true, scholarshipCategory: true,
+            casteEthnicity: true, economicallyDisadvantaged: true, firstGenerationLearner: true, remoteArea: true,
             addresses: { where: { type: "PERMANENT" }, take: 1 },
             guardians: {
               orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
@@ -131,6 +154,15 @@ export async function exportStudentsCsv(
             district: a?.district,
             municipality: a?.municipality,
             medicalNotes: "medicalNotes" in s ? s.medicalNotes : "",
+            disability: "disabilityType" in s && s.disabilityType ? DISABILITY_LABELS[s.disabilityType] : "",
+            previousQualification: s.previousQualification ? PREVIOUS_QUALIFICATION_LABELS[s.previousQualification] : "",
+            previousResult: s.previousResult,
+            entranceScore: s.entranceScore === null ? "" : s.entranceScore.toString(),
+            scholarship: s.scholarshipCategory ? SCHOLARSHIP_LABELS[s.scholarshipCategory] : "",
+            casteEthnicity: s.casteEthnicity ? CASTE_ETHNICITY_LABELS[s.casteEthnicity] : "",
+            economicallyDisadvantaged: yesNo(s.economicallyDisadvantaged),
+            firstGenerationLearner: yesNo(s.firstGenerationLearner),
+            remoteArea: yesNo(s.remoteArea),
           }
           controller.enqueue(encoder.encode(csvLine(columns.map((c) => values[c.key]))))
         }

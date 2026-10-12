@@ -89,3 +89,6 @@ export const grievances: Grievance[] = [
     informTo: "Campus Chief",
   },
 ]
+
+// Placeholder "today" in Bikram Sambat until the grievance module has real dates.
+export const TODAY_BS = "2083-06-21"

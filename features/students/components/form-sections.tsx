@@ -15,9 +15,14 @@ import { Input } from "@/components/ui/input"
 import { searchGuardiansAction } from "@/features/students/actions"
 import {
   ADMISSION_TYPE_LABELS,
+  CASTE_ETHNICITY_LABELS,
+  DISABILITY_LABELS,
   ENROLLMENT_TYPE_LABELS,
   GENDER_LABELS,
+  PREVIOUS_QUALIFICATION_LABELS,
   RELATIONSHIP_LABELS,
+  SCHOLARSHIP_LABELS,
+  YES_NO_LABELS,
 } from "@/features/students/constants"
 import { BLOOD_GROUPS } from "@/features/students/schemas"
 import { districtsOf, PROVINCES } from "@/lib/nepal/locations"
@@ -73,7 +78,39 @@ export function PersonalFields({ prefix = "personal", showSensitive }: { prefix?
           description="Restricted: only visible to roles allowed to see sensitive details. Record only what the school needs."
         />
       )}
+      <BackgroundFields prefix={prefix} showSensitive={showSensitive} />
     </div>
+  )
+}
+
+// UGC/EMIS reporting background (enrollment by caste/ethnicity, disability
+// and equity groups). Every field is optional; "Not recorded" is never
+// counted as any category.
+function BackgroundFields({ prefix, showSensitive }: { prefix: string; showSensitive: boolean }) {
+  const { control } = useForm()
+  const p = (name: string) => (prefix ? `${prefix}.${name}` : name)
+  return (
+    <fieldset className="grid gap-4 rounded-lg border p-4">
+      <legend className="px-1 text-sm font-medium">Background</legend>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SelectField control={control} name={p("casteEthnicity")} label="Caste / ethnicity" placeholder="Not recorded" options={options(CASTE_ETHNICITY_LABELS)} />
+        {showSensitive && (
+          <SelectField
+            control={control}
+            name={p("disabilityType")}
+            label="Disability"
+            placeholder="Not recorded"
+            options={options(DISABILITY_LABELS)}
+            description="Restricted, like medical notes."
+          />
+        )}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SelectField control={control} name={p("economicallyDisadvantaged")} label="Economically disadvantaged" placeholder="Not recorded" options={options(YES_NO_LABELS)} />
+        <SelectField control={control} name={p("firstGenerationLearner")} label="First-generation learner" placeholder="Not recorded" options={options(YES_NO_LABELS)} />
+        <SelectField control={control} name={p("remoteArea")} label="From a rural / remote area" placeholder="Not recorded" options={options(YES_NO_LABELS)} />
+      </div>
+    </fieldset>
   )
 }
 
@@ -136,6 +173,10 @@ export function AdmissionFields({
       <TextField control={control} name={p("admissionDate")} label="Admission date (AD)" type="date" required />
       <SelectField control={control} name={p("admissionType")} label="Admission type" options={options(ADMISSION_TYPE_LABELS)} />
       <TextField control={control} name={p("previousSchool")} label="Previous school / college" />
+      <SelectField control={control} name={p("previousQualification")} label="Previous qualification" placeholder="Not recorded" options={options(PREVIOUS_QUALIFICATION_LABELS)} />
+      <TextField control={control} name={p("previousResult")} label="Previous result" placeholder="e.g. GPA 3.20 or 68%" />
+      <TextField control={control} name={p("entranceScore")} label="Entrance exam score" type="number" min={0} max={1000} step="0.01" />
+      <SelectField control={control} name={p("scholarshipCategory")} label="Scholarship on admission" placeholder="Not recorded" options={options(SCHOLARSHIP_LABELS)} />
     </div>
   )
 }

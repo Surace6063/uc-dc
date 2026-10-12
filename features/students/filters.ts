@@ -2,9 +2,11 @@ import { z } from "zod"
 
 import {
   AdmissionType,
+  CasteEthnicity,
   EnrollmentStatus,
   EnrollmentType,
   Gender,
+  ScholarshipCategory,
   StudentStatus,
 } from "@/lib/generated/prisma/enums"
 import { BLOOD_GROUPS } from "@/features/students/schemas"
@@ -14,6 +16,14 @@ import { BLOOD_GROUPS } from "@/features/students/schemas"
 // parser feeds the table page, the summary counts and the export route.
 
 export const PAGE_SIZES = [10, 25, 50, 100] as const
+
+// Equity groups (EMIS 6.4): students flagged yes for one of these.
+export const EQUITY_FILTERS = ["economicallyDisadvantaged", "firstGenerationLearner", "remoteArea"] as const
+export const EQUITY_FILTER_LABELS: Record<(typeof EQUITY_FILTERS)[number], string> = {
+  economicallyDisadvantaged: "Economically disadvantaged",
+  firstGenerationLearner: "First-generation learner",
+  remoteArea: "Rural / remote area",
+}
 export const SORT_FIELDS = ["name", "admissionNumber", "admissionDate", "createdAt", "gender"] as const
 
 const uuid = z.uuid().optional().catch(undefined)
@@ -68,6 +78,13 @@ export const studentFiltersSchema = z.object({
   municipality: text(100),
   // Only applied for roles with students.sensitive.view (see buildStudentWhere).
   bloodGroup: z.enum(BLOOD_GROUPS).optional().catch(undefined),
+  // UGC/EMIS background; "unrecorded" finds students without a value.
+  caste: z.union([z.enum(CasteEthnicity), z.literal("unrecorded")]).optional().catch(undefined),
+  scholarship: z.union([z.enum(ScholarshipCategory), z.literal("unrecorded")]).optional().catch(undefined),
+  equity: z.enum(EQUITY_FILTERS).optional().catch(undefined),
+  // Restricted like blood group: "has" = any disability, "none" = recorded
+  // as none, "unrecorded" = not recorded.
+  disability: z.enum(["has", "none", "unrecorded"]).optional().catch(undefined),
 
   // Data completeness.
   guardianContact: presence,
@@ -111,7 +128,7 @@ export const DEPENDENT_FILTERS: Record<string, readonly string[]> = {
 export const FILTER_KEYS = [
   "level", "program", "faculty", "class", "section", "batch", "enrollmentStatus", "enrollmentType",
   "status", "gender", "admissionType", "admittedFrom", "admittedTo", "ageMin", "ageMax",
-  "nationality", "province", "district", "municipality", "bloodGroup",
+  "nationality", "province", "district", "municipality", "bloodGroup", "caste", "scholarship", "equity", "disability",
   "guardianContact", "email", "photo", "documents", "incomplete", "createdFrom", "createdTo",
 ] as const
 

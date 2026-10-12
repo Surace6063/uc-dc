@@ -70,8 +70,12 @@ function defaults(structure: EducationStructure): FormInput {
     personal: {
       firstName: "", middleName: "", lastName: "", dateOfBirth: "", gender: "", nationality: "Nepali",
       email: "", phone: "", alternatePhone: "", bloodGroup: "", motherTongue: "", medicalNotes: "",
+      casteEthnicity: "", disabilityType: "", economicallyDisadvantaged: "", firstGenerationLearner: "", remoteArea: "",
     },
-    admission: { admissionNumber: "", admissionDate: today, admissionType: "NEW", previousSchool: "" },
+    admission: {
+      admissionNumber: "", admissionDate: today, admissionType: "NEW", previousSchool: "",
+      previousQualification: "", previousResult: "", entranceScore: "", scholarshipCategory: "",
+    },
     permanentAddress: { ...emptyAddress },
     sameAsPermanent: true,
     temporaryAddress: { ...emptyAddress },

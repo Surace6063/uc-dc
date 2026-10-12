@@ -15,6 +15,7 @@ import {
   studentStatusSchema,
   updateGuardianSchema,
   updateStudentSchema,
+  yesNoToBoolean,
 } from "@/features/students/schemas"
 import { hasPermission, type AuthContext } from "@/lib/authorization/context"
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/authorization/errors"
@@ -151,13 +152,29 @@ async function writeAddresses(
   }
 }
 
-// Medical notes are only written by roles allowed to read them.
+// Medical notes and disability are only written by roles allowed to read
+// them; for everyone else they're left as they are.
 function personalData(ctx: Ctx, personal: ReturnType<typeof updateStudentSchema.parse>["personal"]) {
-  const { medicalNotes, ...rest } = personal
+  const { medicalNotes, disabilityType, economicallyDisadvantaged, firstGenerationLearner, remoteArea, ...rest } = personal
   return {
     ...rest,
     dateOfBirth: toDate(rest.dateOfBirth),
-    ...(hasPermission(ctx, "students.sensitive.view") && { medicalNotes }),
+    economicallyDisadvantaged: yesNoToBoolean(economicallyDisadvantaged),
+    firstGenerationLearner: yesNoToBoolean(firstGenerationLearner),
+    remoteArea: yesNoToBoolean(remoteArea),
+    ...(hasPermission(ctx, "students.sensitive.view") && { medicalNotes, disabilityType }),
+  }
+}
+
+function admissionData(admission: ReturnType<typeof updateStudentSchema.parse>["admission"]) {
+  return {
+    admissionDate: toDate(admission.admissionDate),
+    admissionType: admission.admissionType,
+    previousSchool: admission.previousSchool,
+    previousQualification: admission.previousQualification,
+    previousResult: admission.previousResult,
+    entranceScore: admission.entranceScore,
+    scholarshipCategory: admission.scholarshipCategory,
   }
 }
 
@@ -249,9 +266,7 @@ export async function createStudent(ctx: Ctx, raw: unknown) {
           organizationId,
           admissionNumber,
           ...personalData(ctx, input.personal),
-          admissionDate: toDate(input.admission.admissionDate),
-          admissionType: input.admission.admissionType,
-          previousSchool: input.admission.previousSchool,
+          ...admissionData(input.admission),
           createdById: ctx.user.id,
         },
       })
@@ -371,9 +386,7 @@ export async function updateStudent(ctx: Ctx, studentId: string, raw: unknown) {
         data: {
           ...personalData(ctx, input.personal),
           admissionNumber,
-          admissionDate: toDate(input.admission.admissionDate),
-          admissionType: input.admission.admissionType,
-          previousSchool: input.admission.previousSchool,
+          ...admissionData(input.admission),
         },
       })
       await writeAddresses(tx, studentId, input.permanentAddress, input.temporaryAddress, input.sameAsPermanent)
@@ -726,11 +739,15 @@ export async function getStudentProfile(ctx: Ctx, studentId: string) {
     },
   })
   if (!student) throw new NotFoundError("Student not found.")
-  const { medicalNotes, ...rest } = student
+  const { medicalNotes, disabilityType, entranceScore, ...rest } = student
+  const sensitive = hasPermission(ctx, "students.sensitive.view")
   return {
     ...rest,
-    // Restricted field: dropped unless the role may read it.
-    medicalNotes: hasPermission(ctx, "students.sensitive.view") ? medicalNotes : undefined,
+    // Restricted fields: dropped unless the role may read them.
+    medicalNotes: sensitive ? medicalNotes : undefined,
+    disabilityType: sensitive ? disabilityType : undefined,
+    // Plain number (a Prisma Decimal can't be passed to client components).
+    entranceScore: entranceScore === null ? null : Number(entranceScore),
   }
 }
 

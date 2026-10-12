@@ -2,16 +2,21 @@ import { z } from "zod"
 
 import {
   AdmissionType,
+  CasteEthnicity,
+  DisabilityType,
   EnrollmentStatus,
   EnrollmentType,
   Gender,
   GuardianRelationship,
+  QualificationLevel,
+  ScholarshipCategory,
   StudentStatus,
 } from "@/lib/generated/prisma/enums"
 import { isDistrictInProvince } from "@/lib/nepal/locations"
 import {
   dateString,
   optionalDate,
+  optionalDecimal,
   optionalEmail,
   optionalId,
   optionalInt,
@@ -28,6 +33,16 @@ const optionalEnum = <T extends Record<string, string>>(values: T) =>
     .union([z.enum(values), z.literal("")])
     .nullish()
     .transform((value) => value || null)
+
+// "yes" / "no" / "" (not recorded); stored as true / false / null (see
+// yesNoToBoolean). Kept as strings here so form input and output types match.
+const optionalYesNo = z
+  .union([z.literal("yes"), z.literal("no"), z.literal("")])
+  .nullish()
+  .transform((value) => value || null)
+
+export const yesNoToBoolean = (value: "yes" | "no" | null) => (value === null ? null : value === "yes")
+export const booleanToYesNo = (value: boolean | null | undefined): "yes" | "no" | "" => (value === true ? "yes" : value === false ? "no" : "")
 
 // ------------------------------------------------------------------ sections
 
@@ -50,6 +65,13 @@ export const personalSchema = z.object({
     .transform((value) => value || null),
   motherTongue: optionalText(60),
   medicalNotes: optionalText(2000),
+  // UGC/EMIS background; blank = not recorded. Disability is restricted
+  // like medical notes (written only with students.sensitive.view).
+  casteEthnicity: optionalEnum(CasteEthnicity),
+  disabilityType: optionalEnum(DisabilityType),
+  economicallyDisadvantaged: optionalYesNo,
+  firstGenerationLearner: optionalYesNo,
+  remoteArea: optionalYesNo,
 })
 
 export const addressSchema = z
@@ -79,6 +101,11 @@ export const admissionSchema = z.object({
   admissionDate: dateString("Enter the admission date."),
   admissionType: z.enum(AdmissionType),
   previousSchool: optionalText(150),
+  previousQualification: optionalEnum(QualificationLevel),
+  // GPA, percentage or division, as written on the certificate.
+  previousResult: optionalText(40),
+  entranceScore: optionalDecimal(0, 1000, 2),
+  scholarshipCategory: optionalEnum(ScholarshipCategory),
 })
 
 export const guardianDetailsSchema = z.object({

@@ -9,8 +9,12 @@ import { AppError, ValidationError } from "@/lib/authorization/errors"
 import { normalizeHeader, parseCsv } from "@/lib/csv"
 import {
   AdmissionType,
+  CasteEthnicity,
+  DisabilityType,
   Gender,
   GuardianRelationship,
+  QualificationLevel,
+  ScholarshipCategory,
 } from "@/lib/generated/prisma/enums"
 import { canonicalDistrict, parseProvince } from "@/lib/nepal/locations"
 import { prisma } from "@/lib/prisma"
@@ -81,6 +85,21 @@ function toInput(get: (key: string) => string, structure: Structure, errors: str
     if (!value) errors.push(`Invalid ${column.replace(/_/g, " ")} “${raw}”.`)
     return value ?? fallback
   }
+
+  // yes/no columns: yes, y, true or 1 / no, n, false or 0.
+  const yesNo = (column: string): "yes" | "no" | "" => {
+    const raw = get(column).toLowerCase()
+    if (!raw) return ""
+    if (["yes", "y", "true", "1"].includes(raw)) return "yes"
+    if (["no", "n", "false", "0"].includes(raw)) return "no"
+    errors.push(`Invalid ${column.replace(/_/g, " ")} “${get(column)}” (use yes or no).`)
+    return ""
+  }
+  // Common local names for the previous qualification.
+  const qualificationRaw = get("previous_qualification").toLowerCase().replace(/[\s+/-]+/g, "_")
+  const previousQualification = (
+    { see: "SECONDARY", slc: "SECONDARY", plus_two: "HIGHER_SECONDARY", _2: "HIGHER_SECONDARY", "2": "HIGHER_SECONDARY" } as Record<string, QualificationLevel>
+  )[qualificationRaw]
 
   const provinceRaw = get("permanent_province")
   const province = provinceRaw ? parseProvince(provinceRaw) : null
@@ -165,12 +184,21 @@ function toInput(get: (key: string) => string, structure: Structure, errors: str
       bloodGroup: "",
       motherTongue: "",
       medicalNotes: "",
+      casteEthnicity: choice(CasteEthnicity, "caste_ethnicity", ""),
+      disabilityType: choice(DisabilityType, "disability", ""),
+      economicallyDisadvantaged: yesNo("economically_disadvantaged"),
+      firstGenerationLearner: yesNo("first_generation_learner"),
+      remoteArea: yesNo("remote_area"),
     },
     admission: {
       admissionNumber: get("admission_number"),
       admissionDate: get("admission_date"),
       admissionType: choice(AdmissionType, "admission_type", "NEW") || "NEW",
       previousSchool: "",
+      previousQualification: previousQualification ?? choice(QualificationLevel, "previous_qualification", ""),
+      previousResult: get("previous_result"),
+      entranceScore: get("entrance_score"),
+      scholarshipCategory: choice(ScholarshipCategory, "scholarship", ""),
     },
     permanentAddress,
     sameAsPermanent: true,

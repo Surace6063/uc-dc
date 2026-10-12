@@ -556,3 +556,84 @@ describe("CSV import", () => {
     await rejects(previewImport(ctxA, { csv: "first_name\r\nA\r\n" }), ValidationError, "file")
   })
 })
+
+describe("UGC background fields", () => {
+  const background = {
+    casteEthnicity: "MADHESI", disabilityType: "VISUAL",
+    economicallyDisadvantaged: "yes", firstGenerationLearner: "no", remoteArea: "",
+  }
+  const admissionDetails = { previousQualification: "HIGHER_SECONDARY", previousResult: "GPA 3.20", entranceScore: "72.5", scholarshipCategory: "MERIT" }
+
+  it("saves and shows background and admission details, keeping unrecorded as null", async () => {
+    const created = await createStudent(ctxA, admission({ personal: { firstName: "Ugc", lastName: "Full", ...background }, admission: admissionDetails, guardians: [], enrollment: null }))
+    ids.ugc = created.id
+    const s = await prisma.student.findUniqueOrThrow({ where: { id: created.id } })
+    assert.equal(s.casteEthnicity, "MADHESI")
+    assert.equal(s.disabilityType, "VISUAL")
+    assert.deepEqual([s.economicallyDisadvantaged, s.firstGenerationLearner, s.remoteArea], [true, false, null])
+    assert.equal(s.previousQualification, "HIGHER_SECONDARY")
+    assert.equal(s.entranceScore?.toString(), "72.5")
+    assert.equal(s.scholarshipCategory, "MERIT")
+
+    const profile = await getStudentProfile(ctxA, created.id)
+    assert.equal(profile.disabilityType, "VISUAL")
+    assert.equal(profile.entranceScore, 72.5)
+  })
+
+  it("keeps disability restricted like medical notes", async () => {
+    const limited = ctxFor(ctxA.organization, ["students.view", "students.create", "students.update"])
+    assert.equal((await getStudentProfile(limited, ids.ugc)).disabilityType, undefined)
+
+    // Without sensitive access, a submitted disability is ignored on create
+    // and left unchanged on update.
+    const created = await createStudent(limited, admission({ personal: { firstName: "Ugc", lastName: "Limited", disabilityType: "PHYSICAL" }, guardians: [], enrollment: null }))
+    assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: created.id } })).disabilityType, null)
+    await updateStudent(limited, ids.ugc, {
+      personal: { firstName: "Ugc", lastName: "Full", ...background, disabilityType: "" },
+      admission: { admissionNumber: "", admissionDate: "2026-04-14", admissionType: "NEW", ...admissionDetails },
+      permanentAddress: {}, sameAsPermanent: true, temporaryAddress: {},
+    })
+    assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: ids.ugc } })).disabilityType, "VISUAL")
+  })
+
+  it("filters the list by background, and by disability only with sensitive access", async () => {
+    const madhesi = await listStudents(ctxA, parseStudentFilters({ year: "all", caste: "MADHESI" }))
+    assert.deepEqual(madhesi.rows.map((r) => r.id), [ids.ugc])
+    const merit = await listStudents(ctxA, parseStudentFilters({ year: "all", scholarship: "MERIT" }))
+    assert.deepEqual(merit.rows.map((r) => r.id), [ids.ugc])
+    const poor = await listStudents(ctxA, parseStudentFilters({ year: "all", equity: "economicallyDisadvantaged" }))
+    assert.deepEqual(poor.rows.map((r) => r.id), [ids.ugc])
+    const unrecorded = await listStudents(ctxA, parseStudentFilters({ year: "all", caste: "unrecorded", pageSize: "100" }))
+    assert.ok(unrecorded.total > 0 && !unrecorded.rows.some((r) => r.id === ids.ugc))
+
+    const disabled = await listStudents(ctxA, parseStudentFilters({ year: "all", disability: "has" }))
+    assert.deepEqual(disabled.rows.map((r) => r.id), [ids.ugc])
+    const limited = ctxFor(ctxA.organization, ["students.view"])
+    const all = await listStudents(limited, parseStudentFilters({ year: "all" }))
+    assert.equal((await listStudents(limited, parseStudentFilters({ year: "all", disability: "has" }))).total, all.total, "ignored without sensitive access")
+  })
+
+  it("imports and exports the new columns", async () => {
+    const csv =
+      "first_name,last_name,admission_number,admission_date,caste_ethnicity,economically_disadvantaged,remote_area,scholarship,previous_qualification,entrance_score,disability\r\n" +
+      "Imp,Ugc,UGC-1,2026-04-20,adivasi janajati,Yes,n,need based,+2,65,none\r\n" +
+      "Bad,Flag,UGC-2,2026-04-20,,maybe,,,,,\r\n"
+    const preview = await previewImport(ctxA, { csv, firstLine: 2 })
+    assert.deepEqual(preview.rows.map((r) => r.errors), [[], ["Invalid economically disadvantaged “maybe” (use yes or no)."]])
+    await commitImport(ctxA, { csv, firstLine: 2 })
+    const s = await prisma.student.findFirstOrThrow({ where: { organizationId: ctxA.organization.id, admissionNumber: "UGC-1" } })
+    assert.deepEqual(
+      [s.casteEthnicity, s.economicallyDisadvantaged, s.remoteArea, s.scholarshipCategory, s.previousQualification, s.entranceScore?.toString(), s.disabilityType],
+      ["ADIVASI_JANAJATI", true, false, "NEED_BASED", "HIGHER_SECONDARY", "65", "NONE"]
+    )
+
+    const filters = parseStudentFilters({ year: "all", caste: "MADHESI" })
+    const full = await new Response(await exportStudentsCsv(ctxA, filters, {})).text()
+    assert.match(full.split("\r\n")[0], /Caste \/ ethnicity.*Disability/)
+    assert.match(full, /Madhesi/)
+    assert.match(full, /Visual/)
+    const limited = await new Response(await exportStudentsCsv(ctxFor(ctxA.organization, ["students.view", "students.export"]), filters, {})).text()
+    assert.doesNotMatch(limited.split("\r\n")[0], /Disability/)
+    assert.doesNotMatch(limited, /Visual/)
+  })
+})

@@ -172,6 +172,18 @@ export async function buildStudentWhere(
   if (filters.bloodGroup && ctx.permissions?.includes("students.sensitive.view")) {
     and.push({ bloodGroup: filters.bloodGroup })
   }
+  if (filters.disability && ctx.permissions?.includes("students.sensitive.view")) {
+    and.push(
+      filters.disability === "unrecorded"
+        ? { disabilityType: null }
+        : filters.disability === "none"
+          ? { disabilityType: "NONE" }
+          : { disabilityType: { not: "NONE" } }
+    )
+  }
+  if (filters.caste) and.push({ casteEthnicity: filters.caste === "unrecorded" ? null : filters.caste })
+  if (filters.scholarship) and.push({ scholarshipCategory: filters.scholarship === "unrecorded" ? null : filters.scholarship })
+  if (filters.equity) and.push({ [filters.equity]: true })
   if (filters.createdFrom) and.push({ createdAt: { gte: new Date(filters.createdFrom) } })
   // Inclusive of the whole "to" day.
   if (filters.createdTo) and.push({ createdAt: { lt: new Date(new Date(filters.createdTo).getTime() + 864e5) } })

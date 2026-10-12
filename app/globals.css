@@ -182,3 +182,23 @@
     @apply font-sans;
     }
 }
+/* Report cards and mark sheets print alone on A4, whatever page they sit on. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body:has(.report-card) * {
+    visibility: hidden;
+  }
+  body:has(.report-card) .report-card,
+  body:has(.report-card) .report-card * {
+    visibility: visible;
+  }
+  body:has(.report-card) .report-card {
+    position: absolute;
+    inset: 0 0 auto 0;
+    color: black;
+    background: white;
+  }
+}

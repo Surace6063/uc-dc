@@ -79,10 +79,24 @@ export const PERMISSIONS = {
   "attendance.staff.manage": "Record and correct teacher and staff attendance",
   "attendance.export": "Export and import attendance",
 
-  "exams.view": "View exams and results",
-  "exams.create": "Create exams",
-  "exams.update": "Edit exams",
-  "exams.grade": "Enter and publish marks",
+  // Examinations and results. exams.grade covers the subjects a teacher is
+  // assigned to (checked against TeacherAssignment); exams.marks.manage
+  // covers every subject. Review, approval and publication are separate so
+  // institutions can split duties. Students and parents see published
+  // results through their own profile and guardian links, never through a
+  // permission.
+  "exams.view": "View examinations",
+  "exams.create": "Create examinations",
+  "exams.update": "Edit examinations, their subjects and components",
+  "exams.configure": "Configure grading scales, result policies and assessment types",
+  "exams.grade": "Enter marks for subjects one is assigned to teach",
+  "exams.marks.manage": "Enter and edit marks for any examination subject",
+  "exams.review": "Verify submitted marks and return them for correction",
+  "exams.approve": "Approve marks and results, and reopen published results for correction",
+  "exams.publish": "Publish examination results",
+  "exams.export": "Import marks and export results",
+  "results.view": "View results: one's own, one's children's or one's classes'",
+  "results.view_all": "View every class's results, mark sheets and analytics",
 
   "finance.view": "View fees and payments",
   "finance.create": "Create invoices and record payments",
@@ -118,7 +132,6 @@ export const PERMISSIONS = {
   // Modules not built yet: only view access for now. Add create/update/
   // delete keys when each module is built.
   "quizzes.view": "View quizzes and assessments",
-  "results.view": "View grades and results",
   "communication.view": "Use messaging and announcements",
   "events.view": "View events and the calendar",
   "documents.view": "View documents",
@@ -214,6 +227,11 @@ export const DEFAULT_ROLES = [
       "attendance.staff.view",
       "attendance.export",
       "exams.view",
+      "exams.review",
+      "exams.approve",
+      "exams.publish",
+      "exams.export",
+      "results.view_all",
       "reports.view",
       "staff.view",
       "staff.employment.view",
@@ -362,7 +380,11 @@ export const DEFAULT_ROLES = [
       "classes.view",
       "subjects.view",
       "exams.view",
+      "exams.review",
+      "exams.approve",
+      "exams.export",
       "results.view",
+      "results.view_all",
       "reports.view",
       "events.view",
       "notifications.view",
@@ -372,6 +394,33 @@ export const DEFAULT_ROLES = [
       "attendance.approve",
       "attendance.staff.view",
       "attendance.export",
+    ],
+  },
+  {
+    // Runs examinations end to end, but approval stays with an academic
+    // head (principal, coordinator) so no one both prepares and approves.
+    slug: "exam_officer",
+    name: "Examination Officer",
+    description: "Configures examinations, manages marks workflows and coordinates result publication.",
+    permissions: [
+      "dashboard.view",
+      "students.view",
+      "teachers.view",
+      "academics.view",
+      "classes.view",
+      "subjects.view",
+      "reports.view",
+      "notifications.view",
+      "exams.view",
+      "exams.create",
+      "exams.update",
+      "exams.configure",
+      "exams.marks.manage",
+      "exams.review",
+      "exams.publish",
+      "exams.export",
+      "results.view",
+      "results.view_all",
     ],
   },
   {
@@ -419,9 +468,9 @@ export const DEFAULT_ROLES = [
       "attendance.view",
       "attendance.create",
       "attendance.update",
+      // Marks for assigned subjects only; examinations themselves are set
+      // up by examination officers and administrators.
       "exams.view",
-      "exams.create",
-      "exams.update",
       "exams.grade",
       "classes.view",
       "subjects.view",

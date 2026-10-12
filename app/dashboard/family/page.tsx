@@ -3,7 +3,6 @@ import Link from "next/link"
 import {
   BookOpenCheckIcon,
   CalendarDaysIcon,
-  ClipboardListIcon,
   HeartHandshakeIcon,
   MegaphoneIcon,
   MessagesSquareIcon,
@@ -21,12 +20,14 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { PortalPreferencesForm } from "@/features/guardians/components/portal-preferences"
 import { LINK_FLAGS, RELATIONSHIP_LABELS } from "@/features/guardians/constants"
 import { StudentAttendanceOverviewView } from "@/features/attendance/components/student-overview"
+import { PortalResults } from "@/features/exams/components/portal-results"
 import { StudentStatusBadge } from "@/features/students/components/status-badges"
 import { GENDER_LABELS, initials } from "@/features/students/constants"
 import { getPageContext } from "@/lib/authorization/page"
 import { signedUrls } from "@/lib/supabase/storage"
 import { cn } from "@/lib/utils"
 import { childAttendance } from "@/services/attendance/portal-service"
+import { childResults } from "@/services/exams/portal-service"
 import {
   getGuardianAccountState,
   getPortalChildOverview,
@@ -114,9 +115,10 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
   // overview re-checks access on the server either way.
   const requested = z.uuid().safeParse((await searchParams).child)
   const selected = children.find((c) => requested.success && c.id === requested.data) ?? children[0]
-  const [overview, attendance, photos] = await Promise.all([
+  const [overview, attendance, results, photos] = await Promise.all([
     getPortalChildOverview(context, selected.id),
     childAttendance(context, selected.id),
+    childResults(context, selected.id),
     signedUrls(children.map((c) => c.profileImagePath).filter((p): p is string => !!p), 600),
   ])
   const { student, enrollment, classTeachers, link } = overview
@@ -204,10 +206,14 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
         <StudentAttendanceOverviewView data={attendance} who={student.firstName} />
       </section>
 
+      <section className="grid gap-3" aria-labelledby="child-results">
+        <h2 id="child-results" className="text-base font-semibold">Examination results</h2>
+        <PortalResults years={results} who={student.firstName} />
+      </section>
+
       <Card className="gap-3 p-5">
         <h2 className="text-base font-semibold">School updates</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <ModuleCard title="Examinations & results" icon={ClipboardListIcon} description="Upcoming exams and released results will appear here when the exams module is enabled." />
           <ModuleCard title="Homework & assignments" icon={BookOpenCheckIcon} description="Shown here when the school uses the learning module." />
           <ModuleCard title="Timetable" icon={TableIcon} description="Shown here once the school publishes timetables online." />
           <ModuleCard title="Events & announcements" icon={CalendarDaysIcon} description="School notices and events will appear here." />

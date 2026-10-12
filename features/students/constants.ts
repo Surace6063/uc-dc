@@ -1,9 +1,13 @@
 import type {
   AdmissionType,
+  CasteEthnicity,
+  DisabilityType,
   EnrollmentStatus,
   EnrollmentType,
   Gender,
   GuardianRelationship,
+  QualificationLevel,
+  ScholarshipCategory,
   StudentStatus,
 } from "@/lib/generated/prisma/enums"
 
@@ -20,6 +24,61 @@ export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
   TRANSFERRED: "Transferred out",
   GRADUATED: "Graduated",
 }
+
+// UGC/EMIS background (EMIS sections 3.1, 6 and 7).
+export const CASTE_ETHNICITY_LABELS: Record<CasteEthnicity, string> = {
+  DALIT: "Dalit",
+  ADIVASI_JANAJATI: "Adivasi Janajati",
+  MADHESI: "Madhesi",
+  MUSLIM: "Muslim",
+  THARU: "Tharu",
+  KHAS_ARYA: "Khas Arya",
+  OTHER: "Other",
+}
+
+export const DISABILITY_LABELS: Record<DisabilityType, string> = {
+  NONE: "No disability",
+  PHYSICAL: "Physical",
+  VISUAL: "Visual (low vision / blind)",
+  HEARING: "Hearing (deaf / hard of hearing)",
+  DEAF_BLIND: "Deaf-blind",
+  SPEECH: "Speech",
+  INTELLECTUAL: "Intellectual",
+  PSYCHOSOCIAL: "Psychosocial",
+  AUTISM: "Autism",
+  HAEMOPHILIA: "Haemophilia",
+  MULTIPLE: "Multiple",
+  OTHER: "Other",
+}
+
+export const SCHOLARSHIP_LABELS: Record<ScholarshipCategory, string> = {
+  NONE: "No scholarship",
+  UGC: "UGC",
+  UNIVERSITY: "University",
+  COLLEGE: "College",
+  MERIT: "Merit",
+  NEED_BASED: "Need-based",
+  DALIT: "Dalit",
+  DISABILITY: "Disability",
+  OTHER: "Other",
+}
+
+// Previous qualification on admission (the teachers module's levels).
+export const PREVIOUS_QUALIFICATION_LABELS: Record<QualificationLevel, string> = {
+  SECONDARY: "SEE / SLC",
+  HIGHER_SECONDARY: "+2 / higher secondary",
+  DIPLOMA: "Diploma / CTEVT",
+  BACHELOR: "Bachelor's",
+  MASTER: "Master's",
+  MPHIL: "M.Phil.",
+  DOCTORATE: "Doctorate",
+  PROFESSIONAL: "Professional",
+  OTHER: "Other",
+}
+
+// Yes / no / not recorded, for the equity flags.
+export const YES_NO_LABELS = { yes: "Yes", no: "No" } as const
+export const yesNo = (value: boolean | null | undefined) => (value === true ? "Yes" : value === false ? "No" : null)
 
 export const ADMISSION_TYPE_LABELS: Record<AdmissionType, string> = {
   NEW: "New admission",

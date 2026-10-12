@@ -31,6 +31,15 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { key: "permanent_municipality", description: "Municipality or rural municipality.", example: "Kathmandu Metropolitan City" },
   { key: "permanent_ward", description: "Ward number.", example: "10" },
   { key: "permanent_tole", description: "Tole or locality.", example: "Baneshwor" },
+  { key: "previous_qualification", description: "see, plus_two, diploma, bachelor, master, ... Optional.", example: "plus_two" },
+  { key: "previous_result", description: "GPA, percentage or division. Optional.", example: "GPA 3.20" },
+  { key: "entrance_score", description: "Number, up to 2 decimals. Optional.", example: "" },
+  { key: "scholarship", description: "none, ugc, university, college, merit, need_based, dalit, disability or other. Optional.", example: "" },
+  { key: "caste_ethnicity", description: "dalit, adivasi_janajati, madhesi, muslim, tharu, khas_arya or other. Optional.", example: "" },
+  { key: "disability", description: "none, physical, visual, hearing, ... Saved only for roles allowed to see sensitive details.", example: "" },
+  { key: "economically_disadvantaged", description: "yes or no. Optional.", example: "" },
+  { key: "first_generation_learner", description: "yes or no. Optional.", example: "" },
+  { key: "remote_area", description: "yes or no (rural/remote area). Optional.", example: "" },
 ]
 
 export const IMPORT_MAX_ROWS = 2000

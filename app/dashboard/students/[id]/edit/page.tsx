@@ -6,7 +6,7 @@ import { AccessDenied } from "@/components/shared/access-denied"
 import { PageHeader } from "@/components/shared/page-header"
 import { EditStudentForm } from "@/features/students/components/edit-student-form"
 import { fullName } from "@/features/students/constants"
-import type { UpdateStudentInput } from "@/features/students/schemas"
+import { booleanToYesNo, type UpdateStudentInput } from "@/features/students/schemas"
 import { hasPermission } from "@/lib/authorization/context"
 import { NotFoundError } from "@/lib/authorization/errors"
 import { getPageContext } from "@/lib/authorization/page"
@@ -60,12 +60,21 @@ export default async function EditStudentPage({ params }: { params: Promise<{ id
       bloodGroup: (student.bloodGroup ?? "") as UpdateStudentInput["personal"]["bloodGroup"],
       motherTongue: student.motherTongue ?? "",
       medicalNotes: student.medicalNotes ?? "",
+      casteEthnicity: student.casteEthnicity ?? "",
+      disabilityType: student.disabilityType ?? "",
+      economicallyDisadvantaged: booleanToYesNo(student.economicallyDisadvantaged),
+      firstGenerationLearner: booleanToYesNo(student.firstGenerationLearner),
+      remoteArea: booleanToYesNo(student.remoteArea),
     },
     admission: {
       admissionNumber: student.admissionNumber,
       admissionDate: fromDate(student.admissionDate),
       admissionType: student.admissionType,
       previousSchool: student.previousSchool ?? "",
+      previousQualification: student.previousQualification ?? "",
+      previousResult: student.previousResult ?? "",
+      entranceScore: student.entranceScore === null ? "" : String(student.entranceScore),
+      scholarshipCategory: student.scholarshipCategory ?? "",
     },
     permanentAddress: permanent,
     sameAsPermanent: JSON.stringify(permanent) === JSON.stringify(temporary),

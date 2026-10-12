@@ -129,6 +129,23 @@ model Organization {
   attendanceCorrections AttendanceCorrection[]
   attendanceAlerts      AttendanceAlert[]
 
+  // Examinations, grading and results.
+  assessmentTypes       AssessmentType[]
+  gradingScales         GradingScale[]
+  gradingScaleRules     GradingScaleRule[]
+  resultPolicies        ResultPolicy[]
+  examinations          Examination[]
+  examinationSubjects   ExaminationSubject[]
+  assessmentComponents  AssessmentComponent[]
+  marksSheets           MarksSheet[]
+  studentMarks          StudentMark[]
+  studentMarkHistory    StudentMarkHistory[]
+  markRemarks           MarkRemark[]
+  resultHolds           ResultHold[]
+  resultPublications    ResultPublication[]
+  studentResults        StudentResult[]
+  studentSubjectResults StudentSubjectResult[]
+
   auditLogs AuditLog[]
 
   @@map("organizations")
@@ -296,6 +313,8 @@ model EducationLevel {
   curricula            Curriculum[]
   teacherAssignments   TeacherAssignment[]
   holidays             Holiday[]
+  examinations         Examination[]
+  resultPolicies       ResultPolicy[]
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
@@ -328,6 +347,7 @@ model Program {
   subjects           Subject[]
   curricula          Curriculum[]
   teacherAssignments TeacherAssignment[]
+  examinations       Examination[]
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
@@ -360,15 +380,16 @@ model AcademicClass {
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  educationLevel     EducationLevel      @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  program            Program?            @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  sections           Section[]
-  enrollments        Enrollment[]
-  teacherAssignments TeacherAssignment[]
-  subjectOfferings   SubjectOffering[]
-  electiveGroups     ElectiveGroup[]
-  attendanceSessions AttendanceSession[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel      EducationLevel       @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program             Program?             @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  sections            Section[]
+  enrollments         Enrollment[]
+  teacherAssignments  TeacherAssignment[]
+  subjectOfferings    SubjectOffering[]
+  electiveGroups      ElectiveGroup[]
+  attendanceSessions  AttendanceSession[]
+  examinationSubjects ExaminationSubject[]
 
   @@unique([id, organizationId])
   // Class names are unique within their level (no program) or program.
@@ -403,6 +424,7 @@ model Section {
   teacherAssignments TeacherAssignment[]
   subjectOfferings   SubjectOfferingSection[]
   attendanceSessions AttendanceSession[]
+  marksSheets        MarksSheet[]
 
   @@unique([classId, name])
   @@unique([id, organizationId])
@@ -454,6 +476,7 @@ model AcademicYear {
   electiveGroups     ElectiveGroup[]
   subjectOfferings   SubjectOffering[]
   attendanceSessions AttendanceSession[]
+  examinations       Examination[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -533,6 +556,46 @@ enum StudentStatus {
   GRADUATED
 }
 
+// Nepal's constitutional inclusion groups, as used for UGC/EMIS reporting.
+enum CasteEthnicity {
+  DALIT
+  ADIVASI_JANAJATI
+  MADHESI
+  MUSLIM
+  THARU
+  KHAS_ARYA
+  OTHER
+}
+
+// Disability Rights Act 2074 categories; NONE = recorded as no disability.
+enum DisabilityType {
+  NONE
+  PHYSICAL
+  VISUAL
+  HEARING
+  DEAF_BLIND
+  SPEECH
+  INTELLECTUAL
+  PSYCHOSOCIAL
+  AUTISM
+  HAEMOPHILIA
+  MULTIPLE
+  OTHER
+}
+
+// Scholarship a student was admitted on (EMIS 7.1); NONE = no scholarship.
+enum ScholarshipCategory {
+  NONE
+  UGC
+  UNIVERSITY
+  COLLEGE
+  MERIT
+  NEED_BASED
+  DALIT
+  DISABILITY
+  OTHER
+}
+
 enum AdmissionType {
   NEW
   TRANSFER
@@ -589,35 +652,48 @@ enum StudentHistoryAction {
 
 // A student's persistent identity. Academic placement lives in Enrollment.
 model Student {
-  id               String        @id @default(uuid()) @db.Uuid
-  organizationId   String        @map("organization_id") @db.Uuid
-  admissionNumber  String        @map("admission_number")
-  firstName        String        @map("first_name")
-  middleName       String?       @map("middle_name")
-  lastName         String        @map("last_name")
-  dateOfBirth      DateTime?     @map("date_of_birth") @db.Date
-  gender           Gender?
-  nationality      String?
+  id                        String               @id @default(uuid()) @db.Uuid
+  organizationId            String               @map("organization_id") @db.Uuid
+  admissionNumber           String               @map("admission_number")
+  firstName                 String               @map("first_name")
+  middleName                String?              @map("middle_name")
+  lastName                  String               @map("last_name")
+  dateOfBirth               DateTime?            @map("date_of_birth") @db.Date
+  gender                    Gender?
+  nationality               String?
   // Path in the private storage bucket, never a public URL.
-  profileImagePath String?       @map("profile_image_path")
-  email            String?
-  phone            String?
-  alternatePhone   String?       @map("alternate_phone")
-  bloodGroup       String?       @map("blood_group")
-  motherTongue     String?       @map("mother_tongue")
+  profileImagePath          String?              @map("profile_image_path")
+  email                     String?
+  phone                     String?
+  alternatePhone            String?              @map("alternate_phone")
+  bloodGroup                String?              @map("blood_group")
+  motherTongue              String?              @map("mother_tongue")
   // Restricted: only roles with students.sensitive.view can read it.
-  medicalNotes     String?       @map("medical_notes")
-  previousSchool   String?       @map("previous_school")
-  admissionDate    DateTime      @map("admission_date") @db.Date
-  admissionType    AdmissionType @default(NEW) @map("admission_type")
-  status           StudentStatus @default(ACTIVE)
+  medicalNotes              String?              @map("medical_notes")
+  previousSchool            String?              @map("previous_school")
+  // UGC/EMIS background. Null = not recorded (never assumed). Disability is
+  // restricted like medical notes (students.sensitive.view); NONE records
+  // that the student has none.
+  casteEthnicity            CasteEthnicity?      @map("caste_ethnicity")
+  disabilityType            DisabilityType?      @map("disability_type")
+  economicallyDisadvantaged Boolean?             @map("economically_disadvantaged")
+  firstGenerationLearner    Boolean?             @map("first_generation_learner")
+  remoteArea                Boolean?             @map("remote_area")
+  // Admission details.
+  scholarshipCategory       ScholarshipCategory? @map("scholarship_category")
+  previousQualification     QualificationLevel?  @map("previous_qualification")
+  previousResult            String?              @map("previous_result")
+  entranceScore             Decimal?             @map("entrance_score") @db.Decimal(6, 2)
+  admissionDate             DateTime             @map("admission_date") @db.Date
+  admissionType             AdmissionType        @default(NEW) @map("admission_type")
+  status                    StudentStatus        @default(ACTIVE)
   // Portal account for this student, if any.
-  userId           String?       @map("user_id") @db.Uuid
-  archivedAt       DateTime?     @map("archived_at")
-  archivedById     String?       @map("archived_by_id") @db.Uuid
-  createdById      String?       @map("created_by_id") @db.Uuid
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
+  userId                    String?              @map("user_id") @db.Uuid
+  archivedAt                DateTime?            @map("archived_at")
+  archivedById              String?              @map("archived_by_id") @db.Uuid
+  createdById               String?              @map("created_by_id") @db.Uuid
+  createdAt                 DateTime             @default(now()) @map("created_at")
+  updatedAt                 DateTime             @updatedAt @map("updated_at")
 
   organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user             User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -628,6 +704,10 @@ model Student {
   statusHistory    StudentStatusHistory[]
   attendance       StudentAttendance[]
   attendanceAlerts AttendanceAlert[]
+  marks            StudentMark[]
+  markRemarks      MarkRemark[]
+  resultHolds      ResultHold[]
+  results          StudentResult[]
 
   @@unique([organizationId, admissionNumber])
   @@unique([id, organizationId])
@@ -635,6 +715,7 @@ model Student {
   @@index([organizationId, status, archivedAt])
   @@index([organizationId, lastName, firstName])
   @@index([organizationId, admissionDate])
+  @@index([organizationId, casteEthnicity])
   @@index([organizationId, createdAt])
   @@map("students")
 }
@@ -857,6 +938,8 @@ model Enrollment {
   previousEnrollment Enrollment?         @relation("EnrollmentProgression", fields: [previousEnrollmentId], references: [id], onDelete: SetNull)
   nextEnrollment     Enrollment?         @relation("EnrollmentProgression")
   attendance         StudentAttendance[]
+  marks              StudentMark[]
+  results            StudentResult[]
 
   // At most one ACTIVE placement per student per academic year.
   @@unique([studentId, academicYearId], map: "enrollments_one_active_per_year_key", where: raw("status = 'ACTIVE'"))
@@ -1262,17 +1345,18 @@ model SubjectOffering {
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
-  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  subject            Subject                  @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  academicYear       AcademicYear             @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  class              AcademicClass            @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subject             Subject                  @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  academicYear        AcademicYear             @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class               AcademicClass            @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
   // The curriculum must be one of this subject's.
-  curriculum         Curriculum?              @relation(fields: [curriculumId, subjectId], references: [id, subjectId], onDelete: NoAction)
-  electiveGroup      ElectiveGroup?           @relation(fields: [electiveGroupId, organizationId], references: [id, organizationId], onDelete: NoAction)
-  sections           SubjectOfferingSection[]
-  batch              Batch?                   @relation(fields: [batchId], references: [id])
-  batchId            String?                  @db.Uuid
-  attendanceSessions AttendanceSession[]
+  curriculum          Curriculum?              @relation(fields: [curriculumId, subjectId], references: [id, subjectId], onDelete: NoAction)
+  electiveGroup       ElectiveGroup?           @relation(fields: [electiveGroupId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  sections            SubjectOfferingSection[]
+  batch               Batch?                   @relation(fields: [batchId], references: [id])
+  batchId             String?                  @db.Uuid
+  attendanceSessions  AttendanceSession[]
+  examinationSubjects ExaminationSubject[]
 
   @@unique([academicYearId, classId, subjectId])
   @@unique([id, organizationId])
@@ -2224,4 +2308,628 @@ model AttendanceAlert {
   @@unique([studentId, academicYearId, scope, kind, period])
   @@index([organizationId, createdAt])
   @@map("attendance_alerts")
+}
+
+// ============================================================ examinations
+//
+// Kept deliberately separate:
+//   AssessmentType      what kind of assessment (organisation-defined names)
+//   Examination         one assessment event in an academic year
+//   ExaminationSubject  a subject offering assessed in that examination
+//   AssessmentComponent theory, practical, internal, ... of that subject
+//   MarksSheet          one subject (and section) worth of marks, carrying
+//                       the draft → submitted → verified → approved workflow
+//   StudentMark         one student's raw marks for one component
+//   GradingScale        versioned bands that turn percentages into grades
+//   ResultPolicy        pass/fail, absence, GPA, rounding and ranking rules
+//   ResultPublication   a published, immutable version of an examination's
+//                       results; StudentResult rows are its contents
+// Calculation lives in features/exams/calculation.ts (pure, unit-tested)
+// and is the only place grades, totals and GPA are computed. Published
+// results keep the exact rules they were calculated with.
+
+// Broad classification for filters and reports; names are the organisation's.
+enum AssessmentCategory {
+  CLASS_TEST
+  UNIT_TEST
+  TERMINAL
+  MIDTERM
+  FINAL
+  PRACTICAL
+  INTERNAL
+  PROJECT
+  SEMESTER
+  MOCK
+  OTHER
+}
+
+// DRAFT: being set up. SCHEDULED: configuration frozen, marks entry open.
+// APPROVED: every marks sheet approved and the rules snapshotted. PUBLISHED:
+// results released. REVISION: a correction is in progress after publication
+// (the published version stays visible until a revised one is published).
+// Ongoing/completed are shown from the dates, not stored.
+enum ExaminationStatus {
+  DRAFT
+  SCHEDULED
+  APPROVED
+  PUBLISHED
+  REVISION
+  ARCHIVED
+}
+
+enum ComponentType {
+  THEORY
+  PRACTICAL
+  INTERNAL
+  PROJECT
+  PRESENTATION
+  VIVA
+  LAB
+  ASSIGNMENT
+  OTHER
+}
+
+// LETTER: grades only. GRADE_POINT: grades with grade points (needed for
+// GPA). PERCENTAGE_BAND: named percentage bands (Distinction, First, ...).
+enum GradingType {
+  LETTER
+  GRADE_POINT
+  PERCENTAGE_BAND
+}
+
+// Only drafts are edited; changing an active scale makes a new version.
+enum GradingScaleStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+// How an absent component counts. RESULT_ABSENT: the subject result is
+// "absent" (not passed). COUNT_AS_ZERO: zero marks, normal pass rules.
+enum AbsentTreatment {
+  RESULT_ABSENT
+  COUNT_AS_ZERO
+}
+
+enum GpaMethod {
+  NONE
+  CREDIT_WEIGHTED
+  SIMPLE_AVERAGE
+}
+
+// What decides a subject pass: pass marks, a non-failing grade, or both.
+enum SubjectPassRule {
+  MARKS
+  GRADE
+  MARKS_AND_GRADE
+}
+
+enum RankBasis {
+  TOTAL
+  PERCENTAGE
+  GPA
+}
+
+enum RankScope {
+  CLASS
+  SECTION
+}
+
+// SHARED: 1, 1, 3. DENSE: 1, 1, 2.
+enum RankTieMode {
+  SHARED
+  DENSE
+}
+
+// RETURNED behaves like DRAFT (editable) but records that a reviewer sent it back.
+enum MarksSheetStatus {
+  DRAFT
+  SUBMITTED
+  VERIFIED
+  APPROVED
+  RETURNED
+}
+
+// A component with no StudentMark row has not been entered; it is never
+// treated as zero.
+enum MarkStatus {
+  SCORED
+  ABSENT
+  EXEMPT
+  INCOMPLETE
+  WITHHELD
+}
+
+enum ResultStatus {
+  PASS
+  FAIL
+  ABSENT
+  INCOMPLETE
+  WITHHELD
+  EXEMPT
+  PENDING
+}
+
+enum PublicationStatus {
+  ACTIVE
+  SUPERSEDED
+}
+
+// "First Terminal", "Unit Test", "Semester Final", ... per organisation.
+model AssessmentType {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  name           String
+  code           String?
+  category       AssessmentCategory @default(OTHER)
+  description    String?
+  isActive       Boolean            @default(true) @map("is_active")
+  sortOrder      Int                @default(0) @map("sort_order")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examinations Examination[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@map("assessment_types")
+}
+
+model GradingScale {
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @map("organization_id") @db.Uuid
+  name              String
+  code              String?
+  description       String?
+  gradingType       GradingType        @map("grading_type")
+  status            GradingScaleStatus @default(DRAFT)
+  isDefault         Boolean            @default(false) @map("is_default")
+  version           Int                @default(1)
+  previousVersionId String?            @map("previous_version_id") @db.Uuid
+  effectiveFrom     DateTime?          @map("effective_from") @db.Date
+  effectiveTo       DateTime?          @map("effective_to") @db.Date
+  createdById       String?            @map("created_by_id") @db.Uuid
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  previousVersion GradingScale?      @relation("GradingScaleVersions", fields: [previousVersionId], references: [id], onDelete: SetNull)
+  nextVersions    GradingScale[]     @relation("GradingScaleVersions")
+  rules           GradingScaleRule[]
+  policies        ResultPolicy[]
+  examinations    Examination[]
+
+  @@unique([organizationId, name, version])
+  @@unique([id, organizationId])
+  @@unique([organizationId], map: "grading_scales_one_default_key", where: raw("is_default"))
+  @@index([organizationId, status])
+  @@map("grading_scales")
+}
+
+// One band. minimum is inclusive and maximum exclusive, except a band ending
+// at 100, which includes 100. Bands of a scale never overlap and cover 0–100.
+model GradingScaleRule {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  gradingScaleId    String   @map("grading_scale_id") @db.Uuid
+  grade             String
+  minimumPercentage Decimal  @map("minimum_percentage") @db.Decimal(5, 2)
+  maximumPercentage Decimal  @map("maximum_percentage") @db.Decimal(5, 2)
+  gradePoint        Decimal? @map("grade_point") @db.Decimal(4, 2)
+  description       String?
+  // A failing (non-graded) band such as "NG" or "E".
+  isFailing         Boolean  @default(false) @map("is_failing")
+  sequence          Int      @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gradingScale GradingScale @relation(fields: [gradingScaleId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([gradingScaleId, grade])
+  @@index([gradingScaleId, sequence])
+  @@map("grading_scale_rules")
+}
+
+// Result rules an organisation applies to an examination. Nothing here is a
+// national default: administrators configure and verify their own policy.
+model ResultPolicy {
+  id                    String          @id @default(uuid()) @db.Uuid
+  organizationId        String          @map("organization_id") @db.Uuid
+  name                  String
+  description           String?
+  // Suggested for examinations of this level (null: any level).
+  educationLevelId      String?         @map("education_level_id") @db.Uuid
+  gradingScaleId        String?         @map("grading_scale_id") @db.Uuid
+  isDefault             Boolean         @default(false) @map("is_default")
+  isActive              Boolean         @default(true) @map("is_active")
+  subjectPassRule       SubjectPassRule @default(MARKS) @map("subject_pass_rule")
+  // Components with pass marks must each be passed (e.g. theory and practical separately).
+  componentPassRequired Boolean         @default(false) @map("component_pass_required")
+  absentTreatment       AbsentTreatment @default(RESULT_ABSENT) @map("absent_treatment")
+  // Optional subjects the student took count towards totals and GPA.
+  optionalInAggregate   Boolean         @default(false) @map("optional_in_aggregate")
+  gpaMethod             GpaMethod       @default(NONE) @map("gpa_method")
+  // Decimal places (half-up) for percentages and GPA, applied before grading.
+  percentageDecimals    Int             @default(2) @map("percentage_decimals")
+  gpaDecimals           Int             @default(2) @map("gpa_decimals")
+  // Grace marks: up to this many marks in up to graceMaxSubjects subjects,
+  // applied only when they make the student pass every compulsory subject.
+  graceMarksPerSubject  Decimal?        @map("grace_marks_per_subject") @db.Decimal(5, 2)
+  graceMaxSubjects      Int             @default(0) @map("grace_max_subjects")
+  rankingEnabled        Boolean         @default(false) @map("ranking_enabled")
+  rankBasis             RankBasis       @default(PERCENTAGE) @map("rank_basis")
+  rankScope             RankScope       @default(SECTION) @map("rank_scope")
+  rankTieMode           RankTieMode     @default(SHARED) @map("rank_tie_mode")
+  // Workflow: a verification step before approval, and whether the person
+  // who submitted marks may verify or approve them.
+  requireVerification   Boolean         @default(true) @map("require_verification")
+  separateReviewer      Boolean         @default(true) @map("separate_reviewer")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  educationLevel EducationLevel? @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  gradingScale   GradingScale?   @relation(fields: [gradingScaleId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  examinations   Examination[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@unique([organizationId], map: "result_policies_one_default_key", where: raw("is_default"))
+  @@map("result_policies")
+}
+
+model Examination {
+  id                    String            @id @default(uuid()) @db.Uuid
+  organizationId        String            @map("organization_id") @db.Uuid
+  academicYearId        String            @map("academic_year_id") @db.Uuid
+  assessmentTypeId      String            @map("assessment_type_id") @db.Uuid
+  name                  String
+  code                  String?
+  description           String?
+  // Optional scope for filters; the subjects decide which classes sit it.
+  educationLevelId      String?           @map("education_level_id") @db.Uuid
+  programId             String?           @map("program_id") @db.Uuid
+  // Free text ("First term", "Semester 3"): terms aren't modelled separately.
+  term                  String?
+  startDate             DateTime          @map("start_date") @db.Date
+  endDate               DateTime          @map("end_date") @db.Date
+  resultPublicationDate DateTime?         @map("result_publication_date") @db.Date
+  gradingScaleId        String            @map("grading_scale_id") @db.Uuid
+  resultPolicyId        String            @map("result_policy_id") @db.Uuid
+  status                ExaminationStatus @default(DRAFT)
+  // Policy and grading scale as they were at first approval. Results are
+  // always calculated (and revisions recalculated) from this snapshot, so
+  // later edits to the policy or scale never change this examination.
+  rulesSnapshot         Json?             @map("rules_snapshot")
+  approvedAt            DateTime?         @map("approved_at")
+  approvedById          String?           @map("approved_by_id") @db.Uuid
+  publishedAt           DateTime?         @map("published_at")
+  publishedById         String?           @map("published_by_id") @db.Uuid
+  createdById           String?           @map("created_by_id") @db.Uuid
+  archivedAt            DateTime?         @map("archived_at")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear         @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  assessmentType AssessmentType       @relation(fields: [assessmentTypeId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  educationLevel EducationLevel?      @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program        Program?             @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  gradingScale   GradingScale         @relation(fields: [gradingScaleId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  resultPolicy   ResultPolicy         @relation(fields: [resultPolicyId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  subjects       ExaminationSubject[]
+  sheets         MarksSheet[]
+  marks          StudentMark[]
+  markHistory    StudentMarkHistory[]
+  holds          ResultHold[]
+  publications   ResultPublication[]
+
+  @@unique([organizationId, academicYearId, name])
+  @@unique([id, organizationId])
+  @@index([organizationId, academicYearId, status])
+  @@index([organizationId, startDate])
+  @@index([organizationId, assessmentTypeId])
+  @@map("examinations")
+}
+
+// A subject offering (subject × class × year) assessed in an examination.
+// The class is copied from the offering so marks sheets can reference
+// (subject, class) together and sections always belong to that class.
+model ExaminationSubject {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  examinationId     String    @map("examination_id") @db.Uuid
+  subjectOfferingId String    @map("subject_offering_id") @db.Uuid
+  classId           String    @map("class_id") @db.Uuid
+  // Full marks of the subject. Without component weightage it equals the
+  // sum of the components' full marks.
+  maximumMarks      Decimal   @map("maximum_marks") @db.Decimal(7, 2)
+  passMarks         Decimal?  @map("pass_marks") @db.Decimal(7, 2)
+  // Copied from the offering/subject when added; null means no credits.
+  creditHours       Decimal?  @map("credit_hours") @db.Decimal(5, 2)
+  // Optional subjects apply only to students who have marks in them.
+  isCompulsory      Boolean   @default(true) @map("is_compulsory")
+  examDate          DateTime? @map("exam_date") @db.Date
+  // "HH:MM" local times.
+  startTime         String?   @map("start_time")
+  endTime           String?   @map("end_time")
+  venue             String?
+  sequence          Int       @default(0)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination     Examination           @relation(fields: [examinationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  class           AcademicClass         @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  subjectOffering SubjectOffering       @relation(fields: [subjectOfferingId, classId], references: [id, classId], onDelete: NoAction)
+  components      AssessmentComponent[]
+  sheets          MarksSheet[]
+  remarks         MarkRemark[]
+
+  @@unique([examinationId, subjectOfferingId])
+  @@unique([id, organizationId])
+  @@unique([id, examinationId, classId])
+  @@index([organizationId, classId])
+  @@map("examination_subjects")
+}
+
+// Theory, practical, internal, ... of one examination subject. A subject
+// without separate parts has a single component.
+model AssessmentComponent {
+  id                   String        @id @default(uuid()) @db.Uuid
+  organizationId       String        @map("organization_id") @db.Uuid
+  examinationSubjectId String        @map("examination_subject_id") @db.Uuid
+  name                 String
+  componentType        ComponentType @default(THEORY) @map("component_type")
+  maximumMarks         Decimal       @map("maximum_marks") @db.Decimal(7, 2)
+  // Only enforced when the policy requires component passes.
+  passMarks            Decimal?      @map("pass_marks") @db.Decimal(7, 2)
+  // Percent of the subject; either every component of a subject has one
+  // (summing to 100) or none does (raw marks are added up).
+  weightage            Decimal?      @db.Decimal(5, 2)
+  sequence             Int           @default(0)
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examinationSubject ExaminationSubject @relation(fields: [examinationSubjectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  marks              StudentMark[]
+
+  @@unique([examinationSubjectId, name])
+  @@unique([id, organizationId])
+  @@unique([id, examinationSubjectId])
+  @@map("assessment_components")
+}
+
+// The marks of one examination subject for one section (or the whole class
+// when it has no sections), and their review workflow. Created when marks
+// are first saved. Marks can only be written while the sheet is DRAFT or
+// RETURNED (enforced by a database trigger as well as the service).
+model MarksSheet {
+  id                   String           @id @default(uuid()) @db.Uuid
+  organizationId       String           @map("organization_id") @db.Uuid
+  examinationId        String           @map("examination_id") @db.Uuid
+  examinationSubjectId String           @map("examination_subject_id") @db.Uuid
+  classId              String           @map("class_id") @db.Uuid
+  sectionId            String?          @map("section_id") @db.Uuid
+  status               MarksSheetStatus @default(DRAFT)
+  createdById          String?          @map("created_by_id") @db.Uuid
+  // Set on the first submission: from then on every mark change is kept in
+  // StudentMarkHistory with its reason.
+  firstSubmittedAt     DateTime?        @map("first_submitted_at")
+  submittedAt          DateTime?        @map("submitted_at")
+  submittedById        String?          @map("submitted_by_id") @db.Uuid
+  verifiedAt           DateTime?        @map("verified_at")
+  verifiedById         String?          @map("verified_by_id") @db.Uuid
+  approvedAt           DateTime?        @map("approved_at")
+  approvedById         String?          @map("approved_by_id") @db.Uuid
+  returnedAt           DateTime?        @map("returned_at")
+  returnedById         String?          @map("returned_by_id") @db.Uuid
+  returnNote           String?          @map("return_note")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination        Examination        @relation(fields: [examinationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  examinationSubject ExaminationSubject @relation(fields: [examinationSubjectId, examinationId, classId], references: [id, examinationId, classId], onDelete: Cascade)
+  section            Section?           @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  marks              StudentMark[]
+
+  @@unique([examinationSubjectId, sectionId], map: "marks_sheets_section_key", where: raw("section_id IS NOT NULL"))
+  @@unique([examinationSubjectId], map: "marks_sheets_whole_class_key", where: raw("section_id IS NULL"))
+  @@unique([id, organizationId])
+  @@unique([id, examinationSubjectId])
+  @@index([organizationId, examinationId, status])
+  @@map("marks_sheets")
+}
+
+model StudentMark {
+  id                   String     @id @default(uuid()) @db.Uuid
+  organizationId       String     @map("organization_id") @db.Uuid
+  examinationId        String     @map("examination_id") @db.Uuid
+  examinationSubjectId String     @map("examination_subject_id") @db.Uuid
+  componentId          String     @map("component_id") @db.Uuid
+  marksSheetId         String     @map("marks_sheet_id") @db.Uuid
+  studentId            String     @map("student_id") @db.Uuid
+  enrollmentId         String     @map("enrollment_id") @db.Uuid
+  status               MarkStatus
+  // Raw marks; present exactly when status is SCORED (CHECK constraint).
+  marksObtained        Decimal?   @map("marks_obtained") @db.Decimal(7, 2)
+  enteredById          String?    @map("entered_by_id") @db.Uuid
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination  Examination         @relation(fields: [examinationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  component    AssessmentComponent @relation(fields: [componentId, examinationSubjectId], references: [id, examinationSubjectId], onDelete: Cascade)
+  sheet        MarksSheet          @relation(fields: [marksSheetId, examinationSubjectId], references: [id, examinationSubjectId], onDelete: Cascade)
+  student      Student             @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  // The enrollment must be this student's.
+  enrollment   Enrollment          @relation(fields: [enrollmentId, studentId], references: [id, studentId], onDelete: NoAction)
+
+  // At most one mark per student per component.
+  @@unique([componentId, studentId])
+  @@index([organizationId, examinationId, studentId])
+  @@index([marksSheetId])
+  @@map("student_marks")
+}
+
+// Append-only: every change to a mark after its sheet was first submitted
+// (returned sheets, post-publication corrections), with the reason.
+model StudentMarkHistory {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  examinationId  String      @map("examination_id") @db.Uuid
+  componentId    String      @map("component_id") @db.Uuid
+  studentId      String      @map("student_id") @db.Uuid
+  fromStatus     MarkStatus? @map("from_status")
+  fromMarks      Decimal?    @map("from_marks") @db.Decimal(7, 2)
+  toStatus       MarkStatus? @map("to_status")
+  toMarks        Decimal?    @map("to_marks") @db.Decimal(7, 2)
+  reason         String
+  changedById    String?     @map("changed_by_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination  Examination  @relation(fields: [examinationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([organizationId, examinationId, studentId])
+  @@index([componentId, studentId])
+  @@map("student_mark_history")
+}
+
+// Per student per examination subject: a remark shared on the report card
+// and an internal examiner note that never leaves the staff screens.
+model MarkRemark {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  examinationSubjectId String   @map("examination_subject_id") @db.Uuid
+  studentId            String   @map("student_id") @db.Uuid
+  remark               String?
+  internalNote         String?  @map("internal_note")
+  updatedById          String?  @map("updated_by_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examinationSubject ExaminationSubject @relation(fields: [examinationSubjectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  student            Student            @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([examinationSubjectId, studentId])
+  @@map("mark_remarks")
+}
+
+// A student's whole result held back (fees, disciplinary review, ...). The
+// portals show "withheld" without marks while a hold is open.
+model ResultHold {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  examinationId  String    @map("examination_id") @db.Uuid
+  studentId      String    @map("student_id") @db.Uuid
+  reason         String
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  releasedAt     DateTime? @map("released_at")
+  releasedById   String?   @map("released_by_id") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination  Examination  @relation(fields: [examinationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([examinationId, studentId], map: "result_holds_one_open_key", where: raw("released_at IS NULL"))
+  @@index([organizationId, examinationId])
+  @@map("result_holds")
+}
+
+// A published version of an examination's results. Revisions add a new
+// version and supersede the previous one; nothing published is rewritten.
+model ResultPublication {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  examinationId  String            @map("examination_id") @db.Uuid
+  version        Int
+  status         PublicationStatus @default(ACTIVE)
+  // Required for revisions.
+  reason         String?
+  rulesSnapshot  Json              @map("rules_snapshot")
+  summary        Json
+  publishedById  String?           @map("published_by_id") @db.Uuid
+  publishedAt    DateTime          @default(now()) @map("published_at")
+  supersededAt   DateTime?         @map("superseded_at")
+  notifiedAt     DateTime?         @map("notified_at")
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination    Examination            @relation(fields: [examinationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  results        StudentResult[]
+  subjectResults StudentSubjectResult[]
+
+  @@unique([examinationId, version])
+  @@unique([id, organizationId])
+  @@unique([id, examinationId])
+  @@unique([examinationId], map: "result_publications_one_active_key", where: raw("status = 'ACTIVE'"))
+  @@map("result_publications")
+}
+
+// One student's published result. Immutable (a trigger refuses updates).
+model StudentResult {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  publicationId  String       @map("publication_id") @db.Uuid
+  examinationId  String       @map("examination_id") @db.Uuid
+  studentId      String       @map("student_id") @db.Uuid
+  enrollmentId   String       @map("enrollment_id") @db.Uuid
+  academicYearId String       @map("academic_year_id") @db.Uuid
+  classId        String       @map("class_id") @db.Uuid
+  sectionId      String?      @map("section_id") @db.Uuid
+  status         ResultStatus
+  totalObtained  Decimal?     @map("total_obtained") @db.Decimal(9, 2)
+  totalMaximum   Decimal?     @map("total_maximum") @db.Decimal(9, 2)
+  percentage     Decimal?     @db.Decimal(7, 4)
+  grade          String?
+  gradePoint     Decimal?     @map("grade_point") @db.Decimal(4, 2)
+  gpa            Decimal?     @db.Decimal(6, 4)
+  rank           Int?
+  // Full calculation breakdown (subjects, components, grace, remarks).
+  breakdown      Json
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  publication  ResultPublication      @relation(fields: [publicationId, examinationId], references: [id, examinationId], onDelete: Cascade)
+  student      Student                @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  enrollment   Enrollment             @relation(fields: [enrollmentId, studentId], references: [id, studentId], onDelete: NoAction)
+  subjects     StudentSubjectResult[]
+
+  @@unique([publicationId, studentId])
+  @@unique([id, publicationId])
+  @@index([organizationId, studentId])
+  @@index([organizationId, examinationId, classId, sectionId])
+  @@index([organizationId, academicYearId, status])
+  @@map("student_results")
+}
+
+// Per-subject rows of a published result, for database-side analytics.
+model StudentSubjectResult {
+  id                   String       @id @default(uuid()) @db.Uuid
+  organizationId       String       @map("organization_id") @db.Uuid
+  publicationId        String       @map("publication_id") @db.Uuid
+  resultId             String       @map("result_id") @db.Uuid
+  examinationSubjectId String       @map("examination_subject_id") @db.Uuid
+  subjectId            String       @map("subject_id") @db.Uuid
+  classId              String       @map("class_id") @db.Uuid
+  sectionId            String?      @map("section_id") @db.Uuid
+  isCompulsory         Boolean      @map("is_compulsory")
+  status               ResultStatus
+  obtained             Decimal?     @db.Decimal(9, 2)
+  maximum              Decimal?     @db.Decimal(9, 2)
+  percentage           Decimal?     @db.Decimal(7, 4)
+  grade                String?
+  gradePoint           Decimal?     @map("grade_point") @db.Decimal(4, 2)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  publication  ResultPublication @relation(fields: [publicationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  result       StudentResult     @relation(fields: [resultId, publicationId], references: [id, publicationId], onDelete: Cascade)
+
+  @@unique([resultId, examinationSubjectId])
+  @@index([organizationId, publicationId, subjectId])
+  @@map("student_subject_results")
 }

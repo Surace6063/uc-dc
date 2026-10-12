@@ -18,12 +18,14 @@ import {
 } from "@/components/ui/sheet"
 import {
   ADMISSION_TYPE_LABELS,
+  CASTE_ETHNICITY_LABELS,
   ENROLLMENT_STATUS_LABELS,
   ENROLLMENT_TYPE_LABELS,
   GENDER_LABELS,
+  SCHOLARSHIP_LABELS,
   STUDENT_STATUS_LABELS,
 } from "@/features/students/constants"
-import { FILTER_KEYS, type FilterKey, type StudentFilters } from "@/features/students/filters"
+import { EQUITY_FILTER_LABELS, FILTER_KEYS, type FilterKey, type StudentFilters } from "@/features/students/filters"
 import { BLOOD_GROUPS } from "@/features/students/schemas"
 import { useCan } from "@/components/shared/session-provider"
 import { FilterChips, FilterSelect, labelOptions, SearchBox } from "@/components/shared/filter-controls"
@@ -161,6 +163,21 @@ function AdvancedFilters({
           </section>
           <Separator />
           <section className="grid gap-3">
+            <h3 className="text-sm font-medium">Background</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <FilterSelect label="Caste / ethnicity" value={filters.caste} onChange={set("caste")}
+                options={[...entries(CASTE_ETHNICITY_LABELS), { value: "unrecorded", label: "Not recorded" }]} />
+              <FilterSelect label="Scholarship" value={filters.scholarship} onChange={set("scholarship")}
+                options={[...entries(SCHOLARSHIP_LABELS), { value: "unrecorded", label: "Not recorded" }]} />
+              <FilterSelect label="Equity group" value={filters.equity} onChange={set("equity")} options={entries(EQUITY_FILTER_LABELS)} />
+              {canSeeSensitive && (
+                <FilterSelect label="Disability" value={filters.disability} onChange={set("disability")}
+                  options={[{ value: "has", label: "Has a disability" }, { value: "none", label: "No disability" }, { value: "unrecorded", label: "Not recorded" }]} />
+              )}
+            </div>
+          </section>
+          <Separator />
+          <section className="grid gap-3">
             <h3 className="text-sm font-medium">Data completeness</h3>
             <div className="grid grid-cols-2 gap-3">
               <FilterSelect label="Guardian contact" value={filters.guardianContact} onChange={set("guardianContact")}
@@ -225,6 +242,10 @@ function chipLabel(key: FilterKey, filters: StudentFilters, structure: Education
     case "documents": return filters.documents ? `Documents: ${filters.documents}` : null
     case "incomplete": return filters.incomplete ? "Incomplete records" : null
     case "bloodGroup": return filters.bloodGroup ? `Blood group: ${filters.bloodGroup}` : null
+    case "caste": return filters.caste ? `Caste/ethnicity: ${filters.caste === "unrecorded" ? "not recorded" : CASTE_ETHNICITY_LABELS[filters.caste]}` : null
+    case "scholarship": return filters.scholarship ? `Scholarship: ${filters.scholarship === "unrecorded" ? "not recorded" : SCHOLARSHIP_LABELS[filters.scholarship]}` : null
+    case "equity": return filters.equity ? EQUITY_FILTER_LABELS[filters.equity] : null
+    case "disability": return filters.disability ? `Disability: ${filters.disability === "has" ? "yes" : filters.disability === "none" ? "none" : "not recorded"}` : null
     case "createdFrom": return filters.createdFrom ? `Created from ${filters.createdFrom}` : null
     case "createdTo": return filters.createdTo ? `Created to ${filters.createdTo}` : null
   }

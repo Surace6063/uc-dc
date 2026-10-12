@@ -23,10 +23,15 @@ import {
 import { EnrollmentStatusBadge, StudentStatusBadge } from "@/features/students/components/status-badges"
 import {
   ADMISSION_TYPE_LABELS,
+  CASTE_ETHNICITY_LABELS,
+  DISABILITY_LABELS,
   fullName,
   GENDER_LABELS,
   initials,
+  PREVIOUS_QUALIFICATION_LABELS,
   RELATIONSHIP_LABELS,
+  SCHOLARSHIP_LABELS,
+  yesNo,
 } from "@/features/students/constants"
 import { hasPermission } from "@/lib/authorization/context"
 import { NotFoundError } from "@/lib/authorization/errors"
@@ -220,7 +225,24 @@ export default async function StudentProfilePage({
               <Field label="Blood group" value={student.bloodGroup} />
               <Field label="Mother tongue" value={student.motherTongue} />
               <Field label="Previous school" value={student.previousSchool} />
+              <Field label="Previous qualification" value={student.previousQualification ? PREVIOUS_QUALIFICATION_LABELS[student.previousQualification] : null} />
+              <Field label="Previous result" value={student.previousResult} />
+              <Field label="Entrance exam score" value={student.entranceScore === null ? null : String(student.entranceScore)} />
+              <Field label="Scholarship on admission" value={student.scholarshipCategory ? SCHOLARSHIP_LABELS[student.scholarshipCategory] : null} />
               {canSeeSensitive && <Field label="Medical notes (restricted)" value={student.medicalNotes} />}
+            </dl>
+          </Card>
+          <Card className="mt-4 gap-4 p-5">
+            <div>
+              <h2 className="text-base font-semibold">Background</h2>
+              <p className="text-sm text-muted-foreground">Blank means not recorded.</p>
+            </div>
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <Field label="Caste / ethnicity" value={student.casteEthnicity ? CASTE_ETHNICITY_LABELS[student.casteEthnicity] : null} />
+              {canSeeSensitive && <Field label="Disability (restricted)" value={student.disabilityType ? DISABILITY_LABELS[student.disabilityType] : null} />}
+              <Field label="Economically disadvantaged" value={yesNo(student.economicallyDisadvantaged)} />
+              <Field label="First-generation learner" value={yesNo(student.firstGenerationLearner)} />
+              <Field label="From a rural / remote area" value={yesNo(student.remoteArea)} />
             </dl>
           </Card>
         </TabsContent>

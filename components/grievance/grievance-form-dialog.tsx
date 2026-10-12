@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { TODAY_BS } from "@/components/exams/data"
+import { TODAY_BS } from "@/components/grievance/data"
 import {
   complaintBases,
   informTo,

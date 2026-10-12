@@ -8,7 +8,7 @@ import {
   canTransitionStudent,
 } from "@/features/students/constants"
 import { parseStudentFilters } from "@/features/students/filters"
-import { createStudentSchema } from "@/features/students/schemas"
+import { booleanToYesNo, createStudentSchema, yesNoToBoolean } from "@/features/students/schemas"
 import { DEFAULT_ROLES } from "@/lib/authorization/permissions"
 import { csvLine, parseCsv } from "@/lib/csv"
 import { canonicalDistrict, parseProvince, PROVINCES } from "@/lib/nepal/locations"
@@ -105,6 +105,28 @@ describe("admission form validation", () => {
 
   it("requires a placement when enrolling", () => {
     assert.ok(!createStudentSchema.safeParse({ ...base, enroll: true }).success)
+  })
+
+  it("accepts UGC background as optional, keeping blank as not recorded", () => {
+    const r = createStudentSchema.parse({
+      ...base,
+      personal: { ...base.personal, casteEthnicity: "DALIT", disabilityType: "", economicallyDisadvantaged: "yes", firstGenerationLearner: "", remoteArea: "no" },
+      admission: { ...base.admission, previousQualification: "HIGHER_SECONDARY", entranceScore: "72.25", scholarshipCategory: "" },
+    })
+    assert.deepEqual(
+      [r.personal.casteEthnicity, r.personal.disabilityType, r.personal.economicallyDisadvantaged, r.personal.firstGenerationLearner, r.personal.remoteArea],
+      ["DALIT", null, "yes", null, "no"]
+    )
+    assert.deepEqual([r.admission.entranceScore, r.admission.scholarshipCategory], [72.25, null])
+    assert.deepEqual([yesNoToBoolean("yes"), yesNoToBoolean("no"), yesNoToBoolean(null)], [true, false, null])
+    assert.deepEqual([booleanToYesNo(true), booleanToYesNo(false), booleanToYesNo(null)], ["yes", "no", ""])
+  })
+
+  it("rejects unknown background values and out-of-range entrance scores", () => {
+    assert.ok(!createStudentSchema.safeParse({ ...base, personal: { ...base.personal, casteEthnicity: "BRAHMIN" } }).success)
+    assert.ok(!createStudentSchema.safeParse({ ...base, personal: { ...base.personal, remoteArea: "maybe" } }).success)
+    assert.ok(!createStudentSchema.safeParse({ ...base, admission: { ...base.admission, entranceScore: "1200" } }).success)
+    assert.ok(!createStudentSchema.safeParse({ ...base, admission: { ...base.admission, entranceScore: "70.125" } }).success)
   })
 
   it("allows only one primary guardian", () => {
