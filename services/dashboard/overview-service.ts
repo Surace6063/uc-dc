@@ -76,7 +76,7 @@ export async function loadDashboardScope(ctx: Ctx, raw: DashboardFilters) {
 // ------------------------------------------------------------ students
 
 export type GenderKey = "female" | "male" | "other" | "unrecorded"
-const genderKey = (g: string | null): GenderKey => (g === "FEMALE" ? "female" : g === "MALE" ? "male" : g === "OTHER" ? "other" : "unrecorded")
+export const genderKey = (g: string | null): GenderKey => (g === "FEMALE" ? "female" : g === "MALE" ? "male" : g === "OTHER" ? "other" : "unrecorded")
 const emptyGender = (): Record<GenderKey, number> => ({ female: 0, male: 0, other: 0, unrecorded: 0 })
 
 // Enrolled students by program, gender and caste/ethnicity, the equity

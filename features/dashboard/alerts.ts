@@ -7,7 +7,7 @@ export type AlertSeverity = "high" | "medium" | "low"
 export type ManagementAlert = {
   id: string
   severity: AlertSeverity
-  category: "Attendance" | "Examinations" | "Data quality" | "Setup"
+  category: "Attendance" | "Examinations" | "Faculty" | "Data quality" | "Setup"
   title: string
   description: string
   count?: number

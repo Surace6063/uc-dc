@@ -18,6 +18,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import {
+  ACADEMIC_RANK_LABELS,
   EMPLOYMENT_STATUS_LABELS,
   EMPLOYMENT_TYPE_LABELS,
   QUALIFICATION_LEVEL_LABELS,
@@ -66,7 +67,9 @@ function chipLabel(key: TeacherFilterKey, f: TeacherFilters, s: EducationStructu
     case "status": return f.status.length ? `Status: ${f.status.map((x) => EMPLOYMENT_STATUS_LABELS[x]).join(", ")}` : null
     case "type": return f.type.length ? `Type: ${f.type.map((x) => EMPLOYMENT_TYPE_LABELS[x]).join(", ")}` : null
     case "designation": return f.designation ? `Designation: ${name(s.designations, f.designation)}` : null
+    case "rank": return f.rank ? `Rank: ${f.rank === "unrecorded" ? "Not recorded" : ACADEMIC_RANK_LABELS[f.rank]}` : null
     case "department": return f.department ? `Department: ${name(s.faculties, f.department)}` : null
+    case "otherJob": return f.otherJob ? `Full-time job elsewhere: ${f.otherJob === "unrecorded" ? "not recorded" : f.otherJob}` : null
     case "joinedFrom": return f.joinedFrom ? `Joined from ${f.joinedFrom}` : null
     case "joinedTo": return f.joinedTo ? `Joined to ${f.joinedTo}` : null
     case "contractEndFrom": return f.contractEndFrom ? `Contract ends from ${f.contractEndFrom}` : null
@@ -125,6 +128,10 @@ function AdvancedFilters({
                 options={structure.designations.map((d) => ({ value: d.id, label: d.name }))} />
               <FilterSelect label="Department" value={f.department} onChange={set("department")}
                 options={structure.faculties.map((d) => ({ value: d.id, label: d.name }))} />
+              <FilterSelect label="Academic rank" value={f.rank} onChange={set("rank")}
+                options={[...labelOptions(ACADEMIC_RANK_LABELS), { value: "unrecorded", label: "Not recorded" }]} />
+              <FilterSelect label="Full-time job elsewhere" value={f.otherJob} onChange={set("otherJob")}
+                options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }, { value: "unrecorded", label: "Not recorded" }]} />
               <DateInput id="tf-joined-from" label="Joined from" value={f.joinedFrom} onChange={set("joinedFrom")} />
               <DateInput id="tf-joined-to" label="Joined to" value={f.joinedTo} onChange={set("joinedTo")} />
               <DateInput id="tf-contract-from" label="Contract ends from" value={f.contractEndFrom} onChange={set("contractEndFrom")} />

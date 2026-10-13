@@ -5,12 +5,13 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "rec
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { axis, chartClass, MissingYears, neutral, series, TooltipRow, xTitle, yTitle } from "@/features/dashboard/components/charts/chart-theme"
 import { DoughnutChart } from "@/features/dashboard/components/charts/doughnut-chart"
+import { GenderStackedBars } from "@/features/dashboard/components/charts/gender-bars"
 import { ChartEmpty } from "@/features/dashboard/components/dashboard-ui"
 import { shares, type QualificationKey } from "@/features/dashboard/calculations"
-import { QUALIFICATION_LEVEL_LABELS } from "@/features/teachers/constants"
-import type { FacultyByDesignation, FacultyQualifications, StudentTeacherRatio, StudentTeacherRatioTrend } from "@/services/dashboard/faculty-service"
+import { ACADEMIC_RANK_LABELS, QUALIFICATION_LEVEL_LABELS } from "@/features/teachers/constants"
+import type { FacultyByDesignation, FacultyByRank, FacultyQualifications, StudentTeacherRatio, StudentTeacherRatioTrend } from "@/services/dashboard/faculty-service"
 
-// Faculty charts: designation, highest qualification and the
+// Faculty charts: academic rank, designation, highest qualification and the
 // student–teacher ratio (current, by program and over time).
 
 const teachersConfig = { teachers: { label: "Teachers", theme: series[0] } } satisfies ChartConfig
@@ -27,6 +28,23 @@ export function FacultyByDesignationChart({ rows }: { rows: FacultyByDesignation
         <Bar dataKey="teachers" fill="var(--color-teachers)" maxBarSize={20} radius={[0, 4, 4, 0]} />
       </BarChart>
     </ChartContainer>
+  )
+}
+
+export function FacultyByRankChart({ rows }: { rows: FacultyByRank }) {
+  const total = rows.reduce((n, r) => n + r.total, 0)
+  if (total === 0) return <ChartEmpty>No eligible teachers for these filters.</ChartEmpty>
+  const unrecorded = rows.find((r) => r.key === "UNRECORDED")?.total ?? 0
+  if (unrecorded === total) return <ChartEmpty>No academic rank is recorded for these teachers yet. Set it under each teacher&apos;s employment details.</ChartEmpty>
+  return (
+    <div className="flex flex-col gap-2">
+      <GenderStackedBars rows={rows.map((r) => ({ ...r, label: r.key === "UNRECORDED" ? "Not recorded" : ACADEMIC_RANK_LABELS[r.key] }))} unit="teachers" />
+      {unrecorded > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {unrecorded.toLocaleString()} of {total.toLocaleString()} teachers have no academic rank recorded.
+        </p>
+      )}
+    </div>
   )
 }
 

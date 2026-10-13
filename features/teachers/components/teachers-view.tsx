@@ -58,6 +58,7 @@ import {
   restoreTeacherAction,
 } from "@/features/teachers/actions"
 import {
+  ACADEMIC_RANK_LABELS,
   assignmentSummary,
   EMPLOYMENT_TYPE_LABELS,
   QUALIFICATION_LEVEL_LABELS,
@@ -224,7 +225,12 @@ export function TeachersView({
         id: "designation",
         header: "Designation",
         meta: { label: "Designation" },
-        cell: ({ getValue }) => getValue() || "—",
+        cell: ({ getValue, row }) => (
+          <div className="grid">
+            <span>{getValue() || "—"}</span>
+            {row.original.academicRank && <span className="text-xs text-muted-foreground">{ACADEMIC_RANK_LABELS[row.original.academicRank]}</span>}
+          </div>
+        ),
       }),
       h.accessor((r) => r.department?.name ?? "", {
         id: "department",

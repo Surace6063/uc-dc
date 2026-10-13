@@ -82,6 +82,8 @@ export async function buildTeacherWhere(
   if (filters.status.length) and.push({ employmentStatus: { in: filters.status } })
   if (filters.type.length) and.push({ employmentType: { in: filters.type } })
   if (filters.designation) and.push({ designationId: filters.designation })
+  if (filters.rank) and.push({ academicRank: filters.rank === "unrecorded" ? null : filters.rank })
+  if (filters.otherJob) and.push({ fullTimeElsewhere: filters.otherJob === "unrecorded" ? null : filters.otherJob === "yes" })
   if (filters.department) and.push({ departmentId: filters.department })
   if (filters.joinedFrom) and.push({ dateOfJoining: { gte: new Date(filters.joinedFrom) } })
   if (filters.joinedTo) and.push({ dateOfJoining: { lte: new Date(filters.joinedTo) } })
@@ -157,6 +159,7 @@ export function teacherRowSelect(active: Prisma.TeacherAssignmentWhereInput) {
     employmentStatus: true,
     profileImagePath: true,
     archivedAt: true,
+    academicRank: true,
     designation: { select: { name: true } },
     department: { select: { name: true } },
     qualifications: {

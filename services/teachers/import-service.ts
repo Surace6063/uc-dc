@@ -8,6 +8,7 @@ import type { AuthContext } from "@/lib/authorization/context"
 import { AppError, ValidationError } from "@/lib/authorization/errors"
 import { normalizeHeader, parseCsv } from "@/lib/csv"
 import {
+  AcademicRank,
   Gender,
   QualificationLevel,
   TeacherEmploymentStatus,
@@ -39,6 +40,18 @@ const lower = (v: string) => v.trim().toLowerCase()
 function enumValue<T extends Record<string, string>>(values: T, raw: string): T[keyof T] | null {
   const key = raw.trim().toUpperCase().replace(/[\s-]+/g, "_")
   return (Object.values(values) as string[]).includes(key) ? (key as T[keyof T]) : null
+}
+
+// Common ways academic ranks are written (dots and case ignored).
+const RANK_ALIASES: Record<string, AcademicRank> = {
+  prof: "PROFESSOR",
+  "assoc prof": "ASSOCIATE_PROFESSOR",
+  "associate prof": "ASSOCIATE_PROFESSOR",
+  reader: "ASSOCIATE_PROFESSOR",
+  "asst prof": "ASSISTANT_PROFESSOR",
+  "asst professor": "ASSISTANT_PROFESSOR",
+  "assistant prof": "ASSISTANT_PROFESSOR",
+  ta: "TEACHING_ASSISTANT",
 }
 
 async function loadReferences(ctx: Ctx) {
@@ -74,6 +87,15 @@ async function validate(ctx: Ctx, csv: string, firstLine: number) {
       if (!value) errors.push(`Invalid ${column.replace(/_/g, " ")} “${raw}”.`)
       return value ?? fallback
     }
+
+    const rankRaw = get("academic_rank")
+    const academicRank = rankRaw ? (RANK_ALIASES[lower(rankRaw).replace(/\./g, "").replace(/\s+/g, " ")] ?? enumValue(AcademicRank, rankRaw)) : null
+    if (rankRaw && !academicRank) errors.push(`Invalid academic rank “${rankRaw}”.`)
+
+    // yes, y, true or 1 / no, n, false or 0.
+    const otherJobRaw = lower(get("full_time_elsewhere"))
+    const fullTimeElsewhere = !otherJobRaw ? "" : ["yes", "y", "true", "1"].includes(otherJobRaw) ? "yes" : ["no", "n", "false", "0"].includes(otherJobRaw) ? "no" : null
+    if (fullTimeElsewhere === null) errors.push(`Invalid full time elsewhere “${get("full_time_elsewhere")}” (use yes or no).`)
 
     // Departments and designations map by name (or department code).
     const designationName = get("designation")
@@ -114,9 +136,11 @@ async function validate(ctx: Ctx, csv: string, firstLine: number) {
         employmentType: choice(TeacherEmploymentType, "employment_type", "FULL_TIME") || "FULL_TIME",
         employmentStatus: choice(TeacherEmploymentStatus, "employment_status", "ACTIVE") || "ACTIVE",
         designationId: designation?.id ?? "",
+        academicRank: academicRank ?? "",
         departmentId: department?.id ?? "",
         contractEndDate: get("contract_end_date"),
         onProbation: false,
+        fullTimeElsewhere: fullTimeElsewhere ?? "",
       },
       qualifications:
         qualificationTitle && qualificationLevel

@@ -27,6 +27,7 @@ import {
   getTeacherProfile,
   linkUser,
   restoreTeacher,
+  saveCertification,
   saveQualification,
   updateTeacher,
   verifyRecord,
@@ -386,5 +387,81 @@ describe("CSV import", () => {
     assert.equal(sita.assignments.length, 0)
     assert.equal(sita.userId, null)
     assert.equal((await commitTeacherImport(ctxA, { csv, firstLine: 2 })).created, 0, "re-import doesn't duplicate")
+  })
+})
+
+describe("UGC faculty fields", () => {
+  it("saves academic rank and keeps it in employment history", async () => {
+    const t = await createTeacher(ctxA, teacherInput({
+      personal: { firstName: "Rank", lastName: "Holder" },
+      employment: { academicRank: "LECTURER", fullTimeElsewhere: "no" },
+    }))
+    ids.ranked = t.id
+    const created = await prisma.teacher.findUniqueOrThrow({ where: { id: t.id } })
+    assert.deepEqual([created.academicRank, created.fullTimeElsewhere], ["LECTURER", false])
+
+    await changeEmployment(ctxA, t.id, {
+      dateOfJoining: "2024-04-15", employmentType: "FULL_TIME", employmentStatus: "ACTIVE",
+      designationId: ids.designation, departmentId: ids.science, onProbation: false,
+      academicRank: "ASSISTANT_PROFESSOR", fullTimeElsewhere: "yes",
+      effectiveDate: "2026-07-16", changeNote: "Promoted",
+    })
+    const profile = await getTeacherProfile(ctxA, t.id)
+    assert.equal(profile.academicRank, "ASSISTANT_PROFESSOR")
+    assert.equal(profile.employment?.fullTimeElsewhere, true)
+    assert.deepEqual(profile.employment?.employmentRecords.map((r) => r.academicRank), ["ASSISTANT_PROFESSOR", "LECTURER"])
+
+    // Rank is public like designation; the other-job flag needs employment access.
+    const colleague = await getTeacherProfile(ctxFor(ctxA.organization, ctxA.user.id, ["teachers.view"]), t.id)
+    assert.equal(colleague.academicRank, "ASSISTANT_PROFESSOR")
+    assert.equal(colleague.employment, null)
+    assert.ok(!("fullTimeElsewhere" in colleague))
+  })
+
+  it("filters by rank (including not recorded) and by full-time job elsewhere", async () => {
+    const byRank = await listTeachers(ctxA, parseTeacherFilters({ rank: "ASSISTANT_PROFESSOR", view: "all" }))
+    assert.deepEqual(byRank.rows.map((r) => r.id), [ids.ranked])
+    assert.equal(byRank.rows[0].academicRank, "ASSISTANT_PROFESSOR")
+    const unrecorded = await listTeachers(ctxA, parseTeacherFilters({ rank: "unrecorded", view: "all", pageSize: "100" }))
+    assert.ok(unrecorded.total > 0 && !unrecorded.rows.some((r) => r.id === ids.ranked))
+    const elsewhere = await listTeachers(ctxA, parseTeacherFilters({ otherJob: "yes", view: "all" }))
+    assert.deepEqual(elsewhere.rows.map((r) => r.id), [ids.ranked])
+  })
+
+  it("records the type of a certification or training", async () => {
+    await saveCertification(ctxA, ids.ranked, null, { name: "FDP on outcome-based education", category: "FDP", issuingOrganization: "UGC Nepal" })
+    const [c] = (await getTeacherProfile(ctxA, ids.ranked)).certifications
+    assert.equal(c.category, "FDP")
+  })
+
+  it("imports and exports rank and the other-job flag", async () => {
+    const csv =
+      "employee_id,first_name,last_name,date_of_joining,academic_rank,full_time_elsewhere\r\n" +
+      "UGC-T1,Asha,Thapa,2025-04-15,Asst. Prof.,no\r\n" +
+      "UGC-T2,Hari,KC,2025-04-15,Reader,Y\r\n" +
+      "UGC-T3,Bad,Rank,2025-04-15,Dean,\r\n" +
+      "UGC-T4,Bad,Flag,2025-04-15,,perhaps\r\n"
+    const preview = await previewTeacherImport(ctxA, { csv, firstLine: 2 })
+    assert.deepEqual(preview.rows.map((r) => r.errors), [
+      [],
+      [],
+      ["Invalid academic rank “Dean”."],
+      ["Invalid full time elsewhere “perhaps” (use yes or no)."],
+    ])
+    await commitTeacherImport(ctxA, { csv, firstLine: 2 })
+    const imported = await prisma.teacher.findMany({
+      where: { organizationId: ctxA.organization.id, employeeId: { in: ["UGC-T1", "UGC-T2"] } },
+      orderBy: { employeeId: "asc" },
+      select: { academicRank: true, fullTimeElsewhere: true },
+    })
+    assert.deepEqual(imported.map((t) => [t.academicRank, t.fullTimeElsewhere]), [["ASSISTANT_PROFESSOR", false], ["ASSOCIATE_PROFESSOR", true]])
+
+    const filters = parseTeacherFilters({ rank: "ASSISTANT_PROFESSOR", view: "all" })
+    const full = await new Response(await exportTeachersCsv(ctxA, filters, {})).text()
+    assert.match(full.split("\r\n")[0], /Academic rank.*Full-time job elsewhere/)
+    assert.match(full, /Assistant Professor/)
+    const limited = await new Response(await exportTeachersCsv(ctxFor(ctxA.organization, ctxA.user.id, ["teachers.view", "teachers.export"]), filters, {})).text()
+    assert.match(limited.split("\r\n")[0], /Academic rank/)
+    assert.doesNotMatch(limited.split("\r\n")[0], /Full-time job elsewhere/)
   })
 })

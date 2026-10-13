@@ -1,10 +1,7 @@
 "use client"
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
-
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Progress } from "@/components/ui/progress"
-import { axis, GENDER_KEYS, genderConfig, xTitle } from "@/features/dashboard/components/charts/chart-theme"
+import { GenderStackedBars } from "@/features/dashboard/components/charts/gender-bars"
 import { ChartEmpty } from "@/features/dashboard/components/dashboard-ui"
 import { CASTE_ETHNICITY_LABELS } from "@/features/students/constants"
 import type { StudentOverview } from "@/services/dashboard/overview-service"
@@ -20,22 +17,9 @@ export function CasteEthnicityChart({ rows }: { rows: StudentOverview["byCaste"]
   if (total === 0) return <ChartEmpty>No students enrolled for these filters.</ChartEmpty>
   const unrecorded = rows.find((r) => r.key === "UNRECORDED")?.total ?? 0
   if (unrecorded === total) return <ChartEmpty>No caste/ethnicity is recorded for these students yet. Add it under each student&apos;s background details.</ChartEmpty>
-  const data = rows.map((r) => ({ ...r, label: casteLabel(r.key) }))
-  const keys = GENDER_KEYS.filter((k) => rows.some((r) => r[k] > 0))
   return (
     <div className="flex flex-col gap-2">
-      <ChartContainer config={genderConfig} className="aspect-auto w-full" style={{ height: Math.max(256, data.length * 34 + 72) }}>
-        <BarChart data={data} layout="vertical" margin={{ left: 0, right: 16, bottom: 12 }} accessibilityLayer>
-          <CartesianGrid horizontal={false} />
-          <XAxis type="number" {...axis} allowDecimals={false} label={xTitle("Students")} />
-          <YAxis type="category" dataKey="label" {...axis} width={112} />
-          <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => `${p?.[0]?.payload?.label} · ${p?.[0]?.payload?.total?.toLocaleString()} students`} />} />
-          <ChartLegend content={<ChartLegendContent />} />
-          {keys.map((key, i) => (
-            <Bar key={key} dataKey={key} stackId="g" fill={`var(--color-${key})`} stroke="var(--card)" strokeWidth={1} maxBarSize={20} radius={i === keys.length - 1 ? [0, 4, 4, 0] : 0} />
-          ))}
-        </BarChart>
-      </ChartContainer>
+      <GenderStackedBars rows={rows.map((r) => ({ ...r, label: casteLabel(r.key) }))} unit="students" />
       {unrecorded > 0 && (
         <p className="text-xs text-muted-foreground">
           {unrecorded.toLocaleString()} of {total.toLocaleString()} students ({Math.round((unrecorded / total) * 1000) / 10}%) have no caste/ethnicity recorded.

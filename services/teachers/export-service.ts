@@ -1,6 +1,7 @@
 import "server-only"
 
 import {
+  ACADEMIC_RANK_LABELS,
   assignmentSummary,
   EMPLOYMENT_STATUS_LABELS,
   EMPLOYMENT_TYPE_LABELS,
@@ -8,7 +9,7 @@ import {
   teacherName,
 } from "@/features/teachers/constants"
 import type { TeacherFilters } from "@/features/teachers/filters"
-import { GENDER_LABELS } from "@/features/students/constants"
+import { GENDER_LABELS, yesNo } from "@/features/students/constants"
 import { hasPermission, type AuthContext } from "@/lib/authorization/context"
 import { csvLine } from "@/lib/csv"
 import { provinceName } from "@/lib/nepal/locations"
@@ -34,6 +35,7 @@ export const TEACHER_EXPORT_COLUMNS: readonly Column[] = [
   { key: "nameNepali", header: "Name (Nepali)" },
   { key: "gender", header: "Gender" },
   { key: "designation", header: "Designation" },
+  { key: "academicRank", header: "Academic rank" },
   { key: "department", header: "Department" },
   { key: "employmentType", header: "Employment type" },
   { key: "employmentStatus", header: "Employment status" },
@@ -44,6 +46,7 @@ export const TEACHER_EXPORT_COLUMNS: readonly Column[] = [
   { key: "assignments", header: "Current assignments" },
   { key: "contractEndDate", header: "Contract end date", requires: "employment" },
   { key: "onProbation", header: "On probation", requires: "employment" },
+  { key: "fullTimeElsewhere", header: "Full-time job elsewhere", requires: "employment" },
   { key: "dateOfBirth", header: "Date of birth", requires: "sensitive" },
   { key: "district", header: "Permanent district", requires: "sensitive" },
   { key: "province", header: "Permanent province", requires: "sensitive" },
@@ -78,7 +81,7 @@ export async function exportTeachersCsv(ctx: Ctx, filters: TeacherFilters, optio
           select: {
             employeeId: true, firstName: true, middleName: true, lastName: true, nameNepali: true, gender: true,
             employmentType: true, employmentStatus: true, dateOfJoining: true, email: true, phone: true,
-            contractEndDate: employment, onProbation: employment, dateOfBirth: sensitive,
+            academicRank: true, contractEndDate: employment, onProbation: employment, fullTimeElsewhere: employment, dateOfBirth: sensitive,
             addresses: sensitive ? { where: { type: "PERMANENT" }, take: 1 } : false,
             designation: { select: { name: true } },
             department: { select: { name: true } },
@@ -102,6 +105,7 @@ export async function exportTeachersCsv(ctx: Ctx, filters: TeacherFilters, optio
             nameNepali: t.nameNepali,
             gender: t.gender ? GENDER_LABELS[t.gender] : "",
             designation: t.designation?.name,
+            academicRank: t.academicRank ? ACADEMIC_RANK_LABELS[t.academicRank] : "",
             department: t.department?.name,
             employmentType: EMPLOYMENT_TYPE_LABELS[t.employmentType],
             employmentStatus: EMPLOYMENT_STATUS_LABELS[t.employmentStatus],
@@ -112,6 +116,7 @@ export async function exportTeachersCsv(ctx: Ctx, filters: TeacherFilters, optio
             assignments: t.assignments.map(assignmentSummary).join("; "),
             contractEndDate: "contractEndDate" in t ? t.contractEndDate : null,
             onProbation: "onProbation" in t ? (t.onProbation ? "Yes" : "No") : null,
+            fullTimeElsewhere: "fullTimeElsewhere" in t ? yesNo(t.fullTimeElsewhere) : null,
             dateOfBirth: "dateOfBirth" in t ? t.dateOfBirth : null,
             district: address?.district,
             province: provinceName(address?.province),

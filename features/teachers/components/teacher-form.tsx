@@ -61,8 +61,8 @@ function defaults(structure: EducationStructure): CreateTeacherInput {
     temporaryAddress: { ...emptyAddress },
     employment: {
       dateOfJoining: new Date().toISOString().slice(0, 10), employmentType: "FULL_TIME", employmentStatus: "ACTIVE",
-      designationId: structure.designations.find((d) => d.isActive && d.scope !== "NON_TEACHING")?.id ?? "", departmentId: "", reportingToId: "",
-      contractStartDate: "", contractEndDate: "", onProbation: false, probationEndDate: "", employmentNotes: "",
+      designationId: structure.designations.find((d) => d.isActive && d.scope !== "NON_TEACHING")?.id ?? "", academicRank: "", departmentId: "", reportingToId: "",
+      contractStartDate: "", contractEndDate: "", onProbation: false, probationEndDate: "", employmentNotes: "", fullTimeElsewhere: "",
     },
     qualifications: [],
     certifications: [],

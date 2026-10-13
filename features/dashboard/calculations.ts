@@ -40,22 +40,38 @@ export const genderParityIndex = (female: number, male: number) => (male > 0 ? M
 const CASTE_ORDER = ["DALIT", "ADIVASI_JANAJATI", "MADHESI", "MUSLIM", "THARU", "KHAS_ARYA", "OTHER"] as const
 export type CasteKey = (typeof CASTE_ORDER)[number] | "UNRECORDED"
 
-// Students per caste/ethnicity group, split by gender (UGC annex), with
-// every recorded group listed and "not recorded" last when present.
-export function casteByGender(rows: { caste: string | null; gender: "female" | "male" | "other" | "unrecorded"; count: number }[]) {
-  const by = new Map<CasteKey, { female: number; male: number; other: number; unrecorded: number }>()
+type GenderCountRow = { group: string | null; gender: "female" | "male" | "other" | "unrecorded"; count: number }
+
+// People per group, split by gender, in the given order; unknown or null
+// groups are "UNRECORDED", listed last when present.
+function groupsByGender<K extends string>(order: readonly K[], rows: GenderCountRow[]) {
+  const by = new Map<K | "UNRECORDED", { female: number; male: number; other: number; unrecorded: number }>()
   for (const r of rows) {
-    const key = (r.caste && (CASTE_ORDER as readonly string[]).includes(r.caste) ? r.caste : "UNRECORDED") as CasteKey
+    const key = r.group && (order as readonly string[]).includes(r.group) ? (r.group as K) : "UNRECORDED"
     const g = by.get(key) ?? { female: 0, male: 0, other: 0, unrecorded: 0 }
     g[r.gender] += r.count
     by.set(key, g)
   }
-  return ([...CASTE_ORDER, "UNRECORDED"] as CasteKey[])
+  return [...order, "UNRECORDED" as const]
     .filter((k) => by.has(k))
     .map((k) => {
       const g = by.get(k)!
       return { key: k, ...g, total: g.female + g.male + g.other + g.unrecorded }
     })
+}
+
+// Students per caste/ethnicity group, split by gender (UGC annex).
+export function casteByGender(rows: { caste: string | null; gender: GenderCountRow["gender"]; count: number }[]) {
+  return groupsByGender(CASTE_ORDER, rows.map(({ caste, ...r }) => ({ ...r, group: caste })))
+}
+
+// Academic ranks, senior first; null = not recorded.
+const RANK_ORDER = ["PROFESSOR", "ASSOCIATE_PROFESSOR", "ASSISTANT_PROFESSOR", "LECTURER", "TEACHING_ASSISTANT", "OTHER"] as const
+export type RankKey = (typeof RANK_ORDER)[number] | "UNRECORDED"
+
+// Teachers per academic rank, split by gender (EMIS 8.2).
+export function rankByGender(rows: { rank: string | null; gender: GenderCountRow["gender"]; count: number }[]) {
+  return groupsByGender(RANK_ORDER, rows.map(({ rank, ...r }) => ({ ...r, group: rank })))
 }
 
 export type EquityCounts = {

@@ -1,6 +1,8 @@
 import { z } from "zod"
 
 import {
+  AcademicRank,
+  DevelopmentType,
   Gender,
   QualificationLevel,
   TeacherDocumentCategory,
@@ -9,7 +11,7 @@ import {
   TeachingRole,
   VerificationStatus,
 } from "@/lib/generated/prisma/enums"
-import { addressSchema } from "@/features/students/schemas"
+import { addressSchema, optionalYesNo } from "@/features/students/schemas"
 import {
   dateString,
   optionalDate,
@@ -59,6 +61,7 @@ export const employmentSchema = z
     employmentType: z.enum(TeacherEmploymentType),
     employmentStatus: z.enum(TeacherEmploymentStatus),
     designationId: optionalId,
+    academicRank: optionalEnum(AcademicRank),
     departmentId: optionalId,
     reportingToId: optionalId,
     contractStartDate: optionalDate,
@@ -66,6 +69,7 @@ export const employmentSchema = z
     onProbation: z.boolean(),
     probationEndDate: optionalDate,
     employmentNotes: optionalText(1000),
+    fullTimeElsewhere: optionalYesNo,
   })
   .refine((v) => !v.contractStartDate || !v.contractEndDate || v.contractEndDate >= v.contractStartDate, {
     path: ["contractEndDate"],
@@ -98,6 +102,7 @@ export const qualificationSchema = z.object({
 export const certificationSchema = z
   .object({
     name: requiredText("Enter the certification or training.", 150),
+    category: optionalEnum(DevelopmentType),
     issuingOrganization: optionalText(150),
     issueDate: optionalDate,
     expiryDate: optionalDate,

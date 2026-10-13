@@ -5,6 +5,7 @@ import {
   attendanceGroups,
   attendanceShortages,
   casteByGender,
+  rankByGender,
   fillTrend,
   genderParityIndex,
   gpaBand,
@@ -273,5 +274,21 @@ describe("inclusion figures", () => {
     assert.deepEqual(by.scholarship, [1, 10, 10])
     // Nothing recorded: no share, rather than 0%.
     assert.deepEqual(by.disability, [0, 0, null])
+  })
+})
+
+describe("faculty by academic rank", () => {
+  it("orders ranks senior first with not recorded last", () => {
+    const rows = rankByGender([
+      { rank: "LECTURER", gender: "male", count: 4 },
+      { rank: null, gender: "female", count: 1 },
+      { rank: "PROFESSOR", gender: "female", count: 1 },
+      { rank: "LECTURER", gender: "female", count: 2 },
+    ])
+    assert.deepEqual(rows.map((r) => [r.key, r.female, r.male, r.total]), [
+      ["PROFESSOR", 1, 0, 1],
+      ["LECTURER", 2, 4, 6],
+      ["UNRECORDED", 1, 0, 1],
+    ])
   })
 })

@@ -33,6 +33,7 @@ import { AttendanceOverviewChart } from "@/features/dashboard/components/charts/
 import { EnrollmentTrendChart } from "@/features/dashboard/components/charts/enrollment-trend-chart"
 import {
   FacultyByDesignationChart,
+  FacultyByRankChart,
   FacultyQualificationChart,
   StudentTeacherRatioChart,
   StudentTeacherRatioTrendChart,
@@ -67,7 +68,7 @@ import { loadDashboardScope, studentOverview } from "@/services/dashboard/overvi
 import { managementAlerts, recentActivity } from "@/services/dashboard/alerts-service"
 import { canSeeAll } from "@/services/attendance/access-service"
 import { attendanceOverview, gpaDistribution, passFailByProgram, passRateTrend } from "@/services/dashboard/academic-service"
-import { facultyByDesignation, facultyQualifications, studentTeacherRatio, studentTeacherRatioTrend } from "@/services/dashboard/faculty-service"
+import { facultyByDesignation, facultyByRank, facultyQualifications, studentTeacherRatio, studentTeacherRatioTrend } from "@/services/dashboard/faculty-service"
 import { facultyKpis, passRateKpi, studentKpis } from "@/services/dashboard/kpi-service"
 import { getGuardianAccountState } from "@/services/guardians/portal-service"
 
@@ -172,11 +173,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <section className="flex flex-col gap-3">
               <SectionHeading
                 title="Faculty & staffing"
-                description="Eligible teaching faculty: teachers who are active or on leave. Department and employment type narrow the designation and qualification charts."
+                description="Eligible teaching faculty: teachers who are active or on leave. Department and employment type narrow the rank, designation and qualification charts."
               />
               <FacultyProfileFilters filters={filters} departments={options.faculties} />
               <div className="grid gap-4 lg:grid-cols-2">
-                <Suspense fallback={<><ChartSkeleton /><ChartSkeleton /><ChartSkeleton /><ChartSkeleton /></>}>
+                <Suspense fallback={<><ChartSkeleton className="lg:col-span-2" /><ChartSkeleton /><ChartSkeleton /><ChartSkeleton /><ChartSkeleton /></>}>
                   <FacultyCharts context={context} scope={scope} can={can} />
                 </Suspense>
               </div>
@@ -405,7 +406,8 @@ async function AttendanceSection({ context, scope }: { context: AuthContext; sco
 
 async function FacultyCharts({ context, scope, can }: { context: AuthContext; scope: DashboardScope; can: Can }) {
   const ratios = can("students.view")
-  const [designation, qualifications, ratio, trend] = await Promise.all([
+  const [rank, designation, qualifications, ratio, trend] = await Promise.all([
+    attempt(() => facultyByRank(context, scope)),
     attempt(() => facultyByDesignation(context, scope)),
     attempt(() => facultyQualifications(context, scope)),
     ratios ? attempt(() => studentTeacherRatio(context, scope)) : null,
@@ -413,6 +415,19 @@ async function FacultyCharts({ context, scope, can }: { context: AuthContext; sc
   ])
   return (
     <>
+      {rank.ok ? (
+        <ChartCard
+          title="Faculty by academic rank"
+          description="Eligible teachers by academic rank and gender. Use the employment type filter for visiting or part-time faculty."
+          icon={ChartColumnIcon}
+          href="/dashboard/teachers"
+          className="lg:col-span-2"
+        >
+          <FacultyByRankChart rows={rank.data} />
+        </ChartCard>
+      ) : (
+        <SectionError title="faculty by academic rank" className="lg:col-span-2" />
+      )}
       {designation.ok ? (
         <ChartCard title="Faculty by designation" description="Eligible teachers by their recorded designation." icon={ChartColumnIcon} href="/dashboard/teachers">
           <FacultyByDesignationChart rows={designation.data} />

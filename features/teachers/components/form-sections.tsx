@@ -4,8 +4,10 @@ import { useFormContext, useWatch, type FieldValues } from "react-hook-form"
 
 import { SelectField, SwitchField, TextAreaField, TextField } from "@/components/shared/form-fields"
 import { labelOptions } from "@/components/shared/filter-controls"
-import { GENDER_LABELS } from "@/features/students/constants"
+import { GENDER_LABELS, YES_NO_LABELS } from "@/features/students/constants"
 import {
+  ACADEMIC_RANK_LABELS,
+  DEVELOPMENT_TYPE_LABELS,
   EMPLOYMENT_STATUS_LABELS,
   EMPLOYMENT_TYPE_LABELS,
   QUALIFICATION_LEVEL_LABELS,
@@ -103,6 +105,14 @@ export function EmploymentFields({
           placeholder="Not set"
           options={structure.faculties.filter((f) => f.isActive).map((f) => ({ value: f.id, label: f.name }))}
         />
+        <SelectField
+          control={control}
+          name={p("academicRank")}
+          label="Academic rank"
+          placeholder="Not recorded"
+          options={labelOptions(ACADEMIC_RANK_LABELS)}
+          description="For faculty counts by rank; leave blank where ranks don't apply."
+        />
         {managers.length > 0 && (
           <SelectField control={control} name={p("reportingToId")} label="Reports to" placeholder="No one" options={managers.map((m) => ({ value: m.id, label: m.name }))} />
         )}
@@ -115,6 +125,16 @@ export function EmploymentFields({
               <TextField control={control} name={p("contractEndDate")} label="Contract end" type="date" />
             </div>
           )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              control={control}
+              name={p("fullTimeElsewhere")}
+              label="Full-time job at another institution?"
+              placeholder="Not recorded"
+              options={labelOptions(YES_NO_LABELS)}
+              description="Full-time faculty may not hold another full-time position."
+            />
+          </div>
           <div className="grid items-start gap-4 sm:grid-cols-2">
             <SwitchField control={control} name={p("onProbation")} label="On probation" />
             {onProbation && <TextField control={control} name={p("probationEndDate")} label="Probation ends" type="date" />}
@@ -154,10 +174,11 @@ export function CertificationFields({ prefix }: { prefix: string }) {
   const p = (n: string) => path(prefix, n)
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-[14rem_1fr]">
+        <SelectField control={control} name={p("category")} label="Type" placeholder="Not recorded" options={labelOptions(DEVELOPMENT_TYPE_LABELS)} />
         <TextField control={control} name={p("name")} label="Certification / training" required placeholder="Teacher Professional Development (TPD)" />
-        <TextField control={control} name={p("issuingOrganization")} label="Issued by" placeholder="CEHRD, British Council…" />
       </div>
+      <TextField control={control} name={p("issuingOrganization")} label="Issued by" placeholder="CEHRD, UGC, British Council…" />
       <div className="grid gap-4 sm:grid-cols-3">
         <TextField control={control} name={p("issueDate")} label="Issue date" type="date" />
         <TextField control={control} name={p("expiryDate")} label="Expiry date" type="date" />
@@ -256,7 +277,7 @@ export const emptyQualification = {
   level: "BACHELOR", title: "", specialization: "", institutionName: "", awardingBody: "", country: "Nepal", completionYear: "", result: "",
 } as const
 
-export const emptyCertification = { name: "", issuingOrganization: "", issueDate: "", expiryDate: "", reference: "" }
+export const emptyCertification = { name: "", category: "" as const, issuingOrganization: "", issueDate: "", expiryDate: "", reference: "" }
 
 export function emptyAssignment(structure: EducationStructure) {
   return {

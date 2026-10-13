@@ -4,7 +4,7 @@ import { describe, it } from "node:test"
 
 import { assignmentSummary } from "@/features/teachers/constants"
 import { parseTeacherFilters } from "@/features/teachers/filters"
-import { assignmentSchema, createTeacherSchema, employmentSchema } from "@/features/teachers/schemas"
+import { assignmentSchema, certificationSchema, createTeacherSchema, employmentSchema } from "@/features/teachers/schemas"
 import { DEFAULT_ROLES } from "@/lib/authorization/permissions"
 
 const role = (slug: string) => DEFAULT_ROLES.find((r) => r.slug === slug)!.permissions as readonly string[]
@@ -39,6 +39,27 @@ describe("teacher validation", () => {
     assert.ok(!employmentSchema.safeParse({ ...e, contractStartDate: "2025-01-01", contractEndDate: "2024-12-31" }).success)
     assert.ok(!employmentSchema.safeParse({ ...e, probationEndDate: "2024-06-01" }).success)
     assert.ok(employmentSchema.safeParse({ ...e, onProbation: true, probationEndDate: "2024-06-01" }).success)
+  })
+
+  it("keeps academic rank, full-time job elsewhere and development type optional", () => {
+    const e = { dateOfJoining: "2024-01-01", employmentType: "FULL_TIME", employmentStatus: "ACTIVE", onProbation: false }
+    const blank = employmentSchema.parse({ ...e, academicRank: "", fullTimeElsewhere: "" })
+    assert.deepEqual([blank.academicRank, blank.fullTimeElsewhere], [null, null])
+    const set = employmentSchema.parse({ ...e, academicRank: "ASSOCIATE_PROFESSOR", fullTimeElsewhere: "no" })
+    assert.deepEqual([set.academicRank, set.fullTimeElsewhere], ["ASSOCIATE_PROFESSOR", "no"])
+    assert.ok(!employmentSchema.safeParse({ ...e, academicRank: "DEAN" }).success)
+    assert.ok(!employmentSchema.safeParse({ ...e, fullTimeElsewhere: "sometimes" }).success)
+    assert.equal(certificationSchema.parse({ name: "FDP on OBE", category: "FDP" }).category, "FDP")
+    assert.equal(certificationSchema.parse({ name: "TPD" }).category, null)
+    assert.ok(!certificationSchema.safeParse({ name: "X", category: "HOLIDAY" }).success)
+  })
+
+  it("parses rank and other-job filters", () => {
+    const f = parseTeacherFilters({ rank: "LECTURER", otherJob: "yes" })
+    assert.deepEqual([f.rank, f.otherJob], ["LECTURER", "yes"])
+    assert.equal(parseTeacherFilters({ rank: "unrecorded" }).rank, "unrecorded")
+    const bad = parseTeacherFilters({ rank: "DEAN", otherJob: "maybe" })
+    assert.deepEqual([bad.rank, bad.otherJob], [undefined, undefined])
   })
 
   it("never requires citizenship or national ID numbers", () => {

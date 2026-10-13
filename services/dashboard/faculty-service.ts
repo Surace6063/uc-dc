@@ -2,13 +2,13 @@ import "server-only"
 
 import { cache } from "react"
 
-import { highestQualifications, studentTeacherRatio as ratioOf } from "@/features/dashboard/calculations"
+import { highestQualifications, rankByGender, studentTeacherRatio as ratioOf } from "@/features/dashboard/calculations"
 import type { AuthContext } from "@/lib/authorization/context"
 import { Prisma } from "@/lib/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { countStudents, ELIGIBLE_TEACHER, facultyKpis, teacherScope } from "@/services/dashboard/kpi-service"
 import type { DashboardScope } from "@/features/dashboard/scope"
-import { studentOverview } from "@/services/dashboard/overview-service"
+import { genderKey, studentOverview } from "@/services/dashboard/overview-service"
 
 // Faculty and HR figures. "Eligible teaching faculty" everywhere means
 // teachers who are active or on leave and not archived (ELIGIBLE_TEACHER in
@@ -50,6 +50,17 @@ export const facultyByDesignation = cache(async (ctx: Ctx, scope: DashboardScope
 })
 
 export type FacultyByDesignation = Awaited<ReturnType<typeof facultyByDesignation>>
+
+// ------------------------------------------------------------ academic rank
+
+// Eligible teachers by academic rank and gender; teachers without a rank
+// recorded are their own group, never folded into one.
+export const facultyByRank = cache(async (ctx: Ctx, scope: DashboardScope) => {
+  const rows = await prisma.teacher.groupBy({ by: ["academicRank", "gender"], where: profileScope(ctx, scope), _count: { _all: true } })
+  return rankByGender(rows.map((r) => ({ rank: r.academicRank, gender: genderKey(r.gender), count: r._count._all })))
+})
+
+export type FacultyByRank = Awaited<ReturnType<typeof facultyByRank>>
 
 // ------------------------------------------------------------ qualification
 

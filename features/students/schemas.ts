@@ -36,7 +36,7 @@ const optionalEnum = <T extends Record<string, string>>(values: T) =>
 
 // "yes" / "no" / "" (not recorded); stored as true / false / null (see
 // yesNoToBoolean). Kept as strings here so form input and output types match.
-const optionalYesNo = z
+export const optionalYesNo = z
   .union([z.literal("yes"), z.literal("no"), z.literal("")])
   .nullish()
   .transform((value) => value || null)

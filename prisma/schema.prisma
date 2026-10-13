@@ -1038,6 +1038,28 @@ enum TeacherEmploymentType {
   OTHER
 }
 
+// Academic rank (UGC faculty category), separate from the free-text
+// designation. Visiting and part-time are employment types, not ranks.
+enum AcademicRank {
+  PROFESSOR
+  ASSOCIATE_PROFESSOR
+  ASSISTANT_PROFESSOR
+  LECTURER
+  TEACHING_ASSISTANT
+  OTHER
+}
+
+// Kind of professional development a certification records.
+enum DevelopmentType {
+  TRAINING
+  WORKSHOP
+  SEMINAR
+  CONFERENCE
+  FDP
+  CERTIFICATION
+  OTHER
+}
+
 // Employment lifecycle. Archiving (archived_at) is separate.
 enum TeacherEmploymentStatus {
   ACTIVE
@@ -1479,6 +1501,8 @@ model Teacher {
   employmentType    TeacherEmploymentType   @default(FULL_TIME) @map("employment_type")
   employmentStatus  TeacherEmploymentStatus @default(ACTIVE) @map("employment_status")
   designationId     String?                 @map("designation_id") @db.Uuid
+  // Null = not recorded.
+  academicRank      AcademicRank?           @map("academic_rank")
   departmentId      String?                 @map("department_id") @db.Uuid
   reportingToId     String?                 @map("reporting_to_id") @db.Uuid
   contractStartDate DateTime?               @map("contract_start_date") @db.Date
@@ -1486,6 +1510,9 @@ model Teacher {
   onProbation       Boolean                 @default(false) @map("on_probation")
   probationEndDate  DateTime?               @map("probation_end_date") @db.Date
   employmentNotes   String?                 @map("employment_notes")
+  // Holds a full-time job at another institution (UGC limits this for
+  // full-time faculty). Null = not recorded. Employment access only.
+  fullTimeElsewhere Boolean?                @map("full_time_elsewhere")
 
   archivedAt   DateTime? @map("archived_at")
   archivedById String?   @map("archived_by_id") @db.Uuid
@@ -1516,6 +1543,7 @@ model Teacher {
   @@index([organizationId, dateOfJoining])
   @@index([organizationId, departmentId])
   @@index([organizationId, designationId])
+  @@index([organizationId, academicRank])
   @@map("teachers")
 }
 
@@ -1549,6 +1577,7 @@ model TeacherEmploymentRecord {
   employmentType    TeacherEmploymentType   @map("employment_type")
   employmentStatus  TeacherEmploymentStatus @map("employment_status")
   designationName   String?                 @map("designation_name")
+  academicRank      AcademicRank?           @map("academic_rank")
   departmentName    String?                 @map("department_name")
   contractStartDate DateTime?               @map("contract_start_date") @db.Date
   contractEndDate   DateTime?               @map("contract_end_date") @db.Date
@@ -1599,6 +1628,8 @@ model TeacherCertification {
   organizationId      String             @map("organization_id") @db.Uuid
   teacherId           String             @map("teacher_id") @db.Uuid
   name                String
+  // Training, workshop, seminar, … Null = not recorded.
+  category            DevelopmentType?
   issuingOrganization String?            @map("issuing_organization")
   issueDate           DateTime?          @map("issue_date") @db.Date
   expiryDate          DateTime?          @map("expiry_date") @db.Date

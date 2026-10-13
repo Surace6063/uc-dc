@@ -15,7 +15,7 @@ import type { AttendanceSessionStatus, AttendanceSessionType, AttendanceStatus, 
 import { prisma } from "@/lib/prisma"
 import { attendanceOverview, gpaDistribution, passFailByProgram, passRateTrend } from "@/services/dashboard/academic-service"
 import { facultyKpis, passRateKpi, studentKpis } from "@/services/dashboard/kpi-service"
-import { facultyByDesignation, facultyQualifications, studentTeacherRatio, studentTeacherRatioTrend } from "@/services/dashboard/faculty-service"
+import { facultyByDesignation, facultyByRank, facultyQualifications, studentTeacherRatio, studentTeacherRatioTrend } from "@/services/dashboard/faculty-service"
 import { managementAlerts, recentActivity } from "@/services/dashboard/alerts-service"
 import { loadDashboardScope, loadScopeOptions, studentOverview, yearExaminations } from "@/services/dashboard/overview-service"
 
@@ -92,8 +92,8 @@ before(async () => {
   const lecturer = await prisma.designation.create({ data: { organizationId, name: "Lecturer", sortOrder: 2 } })
   const professor = await prisma.designation.create({ data: { organizationId, name: "Professor", sortOrder: 1 } })
   const from = day("2025-07-01")
-  const t1 = await prisma.teacher.create({ data: { organizationId, employeeId: `T1-${run}`, firstName: "Kamala", lastName: "L", dateOfJoining: from, designationId: lecturer.id, departmentId: ids.management } })
-  const t2 = await prisma.teacher.create({ data: { organizationId, employeeId: `T2-${run}`, firstName: "Bishnu", lastName: "P", dateOfJoining: from, designationId: professor.id, employmentType: "PART_TIME" } })
+  const t1 = await prisma.teacher.create({ data: { organizationId, employeeId: `T1-${run}`, firstName: "Kamala", lastName: "L", gender: "FEMALE", dateOfJoining: from, designationId: lecturer.id, academicRank: "LECTURER", departmentId: ids.management } })
+  const t2 = await prisma.teacher.create({ data: { organizationId, employeeId: `T2-${run}`, firstName: "Bishnu", lastName: "P", dateOfJoining: from, designationId: professor.id, academicRank: "PROFESSOR", employmentType: "PART_TIME" } })
   const t3 = await prisma.teacher.create({ data: { organizationId, employeeId: `T3-${run}`, firstName: "Gone", lastName: "R", dateOfJoining: day("2024-07-01"), designationId: lecturer.id, employmentStatus: "RESIGNED" } })
   // Employment history: Kamala joined 2025-07-01; Gone taught from
   // 2024-07-01 and resigned 2025-08-01; Bishnu has no history (imported),
@@ -282,6 +282,13 @@ describe("faculty profile and ratio history", () => {
     assert.equal((await facultyKpis(ctx, await scopeFor({ emp: "PART_TIME" }))).total, 2)
   })
 
+  it("groups eligible teachers by academic rank and gender, senior first", async () => {
+    const rows = (await facultyByRank(ctx, await scopeFor())).map((r) => [r.key, r.female, r.unrecorded, r.total])
+    // Resigned Gone isn't eligible.
+    assert.deepEqual(rows, [["PROFESSOR", 0, 1, 1], ["LECTURER", 1, 0, 1]])
+    assert.deepEqual((await facultyByRank(ctx, await scopeFor({ emp: "PART_TIME" }))).map((r) => r.key), ["PROFESSOR"])
+  })
+
   it("counts each eligible teacher once by highest qualification", async () => {
     assert.deepEqual(await facultyQualifications(ctx, await scopeFor()), {
       teachers: 2,
@@ -419,6 +426,27 @@ describe("alerts and activity", () => {
     assert.deepEqual(studentsOnly.map((a) => a.id), ["ugc-gender", "ugc-caste"])
     const noYear = await managementAlerts(ctxFor(ctx.organization, ["dashboard.view", "academics.manage"]), null, options)
     assert.deepEqual(noYear.map((a) => a.id), ["no-year"])
+  })
+
+  it("flags missing academic ranks and full-time faculty employed elsewhere", async () => {
+    const options = await loadScopeOptions(ctx)
+    const teachers = await prisma.teacher.findMany({ where: { organizationId: ctx.organization.id, academicRank: { not: null } }, select: { id: true, academicRank: true, employmentType: true } })
+    const fullTime = teachers.find((t) => t.employmentType === "FULL_TIME")!
+    const partTime = teachers.find((t) => t.employmentType === "PART_TIME")!
+    await prisma.teacher.update({ where: { id: partTime.id }, data: { academicRank: null, fullTimeElsewhere: true } })
+    await prisma.teacher.update({ where: { id: fullTime.id }, data: { fullTimeElsewhere: true } })
+    try {
+      const hr = ctxFor(ctx.organization, ["dashboard.view", "teachers.view", "teachers.employment.view"])
+      const alerts = await managementAlerts(hr, await scopeFor(), options)
+      // Only the full-time teacher counts; part-time faculty may work elsewhere.
+      assert.deepEqual(alerts.map((a) => [a.id, a.severity, a.count]), [["faculty-full-time-elsewhere", "high", 1], ["ugc-rank", "low", 1]])
+      assert.match(alerts[0].href, /otherJob=yes/)
+      const viewOnly = await managementAlerts(ctxFor(ctx.organization, ["dashboard.view", "teachers.view"]), await scopeFor(), options)
+      assert.deepEqual(viewOnly.map((a) => a.id), ["ugc-rank"])
+    } finally {
+      await prisma.teacher.update({ where: { id: partTime.id }, data: { academicRank: partTime.academicRank, fullTimeElsewhere: null } })
+      await prisma.teacher.update({ where: { id: fullTime.id }, data: { fullTimeElsewhere: null } })
+    }
   })
 
   it("flags overdue result publication with its due date", async () => {

@@ -1,5 +1,7 @@
 import type {
+  AcademicRank,
   AssignmentStatus,
+  DevelopmentType,
   QualificationLevel,
   TeacherDocumentCategory,
   TeacherEmploymentStatus,
@@ -14,6 +16,25 @@ export const EMPLOYMENT_TYPE_LABELS: Record<TeacherEmploymentType, string> = {
   CONTRACT: "Contract",
   TEMPORARY: "Temporary",
   VISITING: "Visiting",
+  OTHER: "Other",
+}
+
+export const ACADEMIC_RANK_LABELS: Record<AcademicRank, string> = {
+  PROFESSOR: "Professor",
+  ASSOCIATE_PROFESSOR: "Associate Professor",
+  ASSISTANT_PROFESSOR: "Assistant Professor",
+  LECTURER: "Lecturer",
+  TEACHING_ASSISTANT: "Teaching Assistant",
+  OTHER: "Other",
+}
+
+export const DEVELOPMENT_TYPE_LABELS: Record<DevelopmentType, string> = {
+  TRAINING: "Training",
+  WORKSHOP: "Workshop",
+  SEMINAR: "Seminar",
+  CONFERENCE: "Conference",
+  FDP: "Faculty development programme (FDP)",
+  CERTIFICATION: "Certification",
   OTHER: "Other",
 }
 

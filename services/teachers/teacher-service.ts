@@ -1,5 +1,6 @@
 import "server-only"
 
+import { yesNoToBoolean } from "@/features/students/schemas"
 import {
   EMPLOYMENT_STATUS_LABELS,
   LEFT_STATUSES,
@@ -128,6 +129,7 @@ function employmentData(input: EmploymentValues) {
     employmentType: input.employmentType,
     employmentStatus: input.employmentStatus,
     designationId: input.designationId,
+    academicRank: input.academicRank,
     departmentId: input.departmentId,
     reportingToId: input.reportingToId,
     contractStartDate: toDate(input.contractStartDate),
@@ -135,6 +137,7 @@ function employmentData(input: EmploymentValues) {
     onProbation: input.onProbation,
     probationEndDate: input.onProbation ? toDate(input.probationEndDate) : null,
     employmentNotes: input.employmentNotes,
+    fullTimeElsewhere: yesNoToBoolean(input.fullTimeElsewhere),
   }
 }
 
@@ -185,7 +188,7 @@ export async function createTeacher(ctx: Ctx, raw: unknown) {
         data: {
           organizationId, teacherId: teacher.id, effectiveDate: teacher.dateOfJoining,
           employmentType: teacher.employmentType, employmentStatus: teacher.employmentStatus,
-          ...refs, contractStartDate: teacher.contractStartDate, contractEndDate: teacher.contractEndDate,
+          academicRank: teacher.academicRank, ...refs, contractStartDate: teacher.contractStartDate, contractEndDate: teacher.contractEndDate,
           onProbation: teacher.onProbation, note: "Joined", changedById: ctx.user.id,
         },
       })
@@ -290,7 +293,7 @@ export async function changeEmployment(ctx: Ctx, teacherId: string, raw: unknown
     await tx.teacherEmploymentRecord.create({
       data: {
         organizationId: ctx.organization.id, teacherId, effectiveDate: toDate(input.effectiveDate),
-        employmentType: updated.employmentType, employmentStatus: updated.employmentStatus, ...refs,
+        employmentType: updated.employmentType, employmentStatus: updated.employmentStatus, academicRank: updated.academicRank, ...refs,
         contractStartDate: updated.contractStartDate, contractEndDate: updated.contractEndDate,
         onProbation: updated.onProbation, note: input.changeNote, changedById: ctx.user.id,
       },
@@ -608,7 +611,7 @@ export async function getTeacherProfile(ctx: Ctx, teacherId: string) {
   // Field-level restrictions: removed on the server, not just hidden in the UI.
   const {
     dateOfBirth, addresses, emergencyContactName, emergencyContactPhone, emergencyContactRelationship,
-    contractStartDate, contractEndDate, onProbation, probationEndDate, employmentNotes, employmentRecords, reportingTo,
+    contractStartDate, contractEndDate, onProbation, probationEndDate, employmentNotes, employmentRecords, reportingTo, fullTimeElsewhere,
     ...rest
   } = teacher
   return {
@@ -618,7 +621,7 @@ export async function getTeacherProfile(ctx: Ctx, teacherId: string) {
       ? { dateOfBirth, addresses, emergencyContactName, emergencyContactPhone, emergencyContactRelationship }
       : null,
     employment: access.employment
-      ? { contractStartDate, contractEndDate, onProbation, probationEndDate, employmentNotes, employmentRecords, reportingTo }
+      ? { contractStartDate, contractEndDate, onProbation, probationEndDate, employmentNotes, employmentRecords, reportingTo, fullTimeElsewhere }
       : null,
   }
 }

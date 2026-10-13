@@ -53,7 +53,9 @@ import {
   DOCUMENT_MIME_TYPES,
   PHOTO_MAX_BYTES,
   PHOTO_MIME_TYPES,
+  yesNo,
 } from "@/features/students/constants"
+import { booleanToYesNo } from "@/features/students/schemas"
 import {
   addAssignmentAction,
   archiveTeacherAction,
@@ -86,7 +88,9 @@ import {
   VerificationBadge,
 } from "@/features/teachers/components/status-badges"
 import {
+  ACADEMIC_RANK_LABELS,
   assignmentSummary,
+  DEVELOPMENT_TYPE_LABELS,
   DOCUMENT_CATEGORY_LABELS,
   EMPLOYMENT_STATUS_LABELS,
   EMPLOYMENT_TYPE_LABELS,
@@ -322,6 +326,7 @@ export function EmploymentPanel({
       employmentType: teacher.employmentType,
       employmentStatus: teacher.employmentStatus,
       designationId: teacher.designation?.id ?? "",
+      academicRank: teacher.academicRank ?? "",
       departmentId: teacher.department?.id ?? "",
       reportingToId: e?.reportingTo?.id ?? "",
       contractStartDate: fromDate(e?.contractStartDate),
@@ -329,6 +334,7 @@ export function EmploymentPanel({
       onProbation: e?.onProbation ?? false,
       probationEndDate: fromDate(e?.probationEndDate),
       employmentNotes: e?.employmentNotes ?? "",
+      fullTimeElsewhere: booleanToYesNo(e?.fullTimeElsewhere),
       effectiveDate: today(),
       changeNote: "",
     })
@@ -353,7 +359,9 @@ export function EmploymentPanel({
           <Field label="Type" value={EMPLOYMENT_TYPE_LABELS[teacher.employmentType]} />
           <Field label="Date of joining" value={formatDate(teacher.dateOfJoining)} />
           <Field label="Designation" value={teacher.designation?.name} />
+          <Field label="Academic rank" value={teacher.academicRank ? ACADEMIC_RANK_LABELS[teacher.academicRank] : null} />
           <Field label="Department" value={teacher.department?.name} />
+          {e && <Field label="Full-time job elsewhere" value={yesNo(e.fullTimeElsewhere)} />}
           {e && <Field label="Reports to" value={e.reportingTo ? `${e.reportingTo.firstName} ${e.reportingTo.lastName}` : null} />}
           {e && <Field label="Contract" value={e.contractStartDate || e.contractEndDate ? `${formatDate(e.contractStartDate)} – ${formatDate(e.contractEndDate)}` : null} />}
           {e && <Field label="Probation" value={e.onProbation ? `Yes, until ${formatDate(e.probationEndDate)}` : "No"} />}
@@ -374,6 +382,7 @@ export function EmploymentPanel({
                   <TableHead>Status</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Designation</TableHead>
+                  <TableHead>Rank</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead className="pr-4">Note</TableHead>
                 </TableRow>
@@ -385,6 +394,7 @@ export function EmploymentPanel({
                     <TableCell>{EMPLOYMENT_STATUS_LABELS[r.employmentStatus]}</TableCell>
                     <TableCell>{EMPLOYMENT_TYPE_LABELS[r.employmentType]}</TableCell>
                     <TableCell>{r.designationName ?? "—"}</TableCell>
+                    <TableCell>{r.academicRank ? ACADEMIC_RANK_LABELS[r.academicRank] : "—"}</TableCell>
                     <TableCell>{r.departmentName ?? "—"}</TableCell>
                     <TableCell className="pr-4 text-muted-foreground">{r.note ?? ""}</TableCell>
                   </TableRow>
@@ -549,7 +559,7 @@ export function CertificationsPanel({ teacher, documents }: { teacher: TeacherPr
   function open(c: Certification | null) {
     form.reset(
       c
-        ? { name: c.name, issuingOrganization: c.issuingOrganization ?? "", issueDate: fromDate(c.issueDate), expiryDate: fromDate(c.expiryDate), reference: c.reference ?? "" }
+        ? { name: c.name, category: c.category ?? "", issuingOrganization: c.issuingOrganization ?? "", issueDate: fromDate(c.issueDate), expiryDate: fromDate(c.expiryDate), reference: c.reference ?? "" }
         : { ...emptyCertification }
     )
     setDocumentId(c?.documentId ?? "")
@@ -577,7 +587,10 @@ export function CertificationsPanel({ teacher, documents }: { teacher: TeacherPr
           {teacher.certifications.map((c) => (
             <li key={c.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <p className="font-medium">{c.name}</p>
+                <p className="flex flex-wrap items-center gap-2 font-medium">
+                  {c.name}
+                  {c.category && <Badge variant="outline">{DEVELOPMENT_TYPE_LABELS[c.category]}</Badge>}
+                </p>
                 <p className="text-sm text-muted-foreground">
                   {[c.issuingOrganization, c.issueDate && `Issued ${formatDate(c.issueDate)}`, c.expiryDate && `Expires ${formatDate(c.expiryDate)}`, c.reference].filter(Boolean).join(" · ")}
                 </p>

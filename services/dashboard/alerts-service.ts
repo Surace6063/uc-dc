@@ -175,9 +175,20 @@ export async function managementAlerts(ctx: Ctx, scope: DashboardScope | null, o
     {
       permission: "teachers.view",
       run: async () => {
-        const n = await prisma.teacher.count({ where: { organizationId, ...ELIGIBLE_TEACHER, designationId: null } })
+        const n = await prisma.teacher.count({ where: { organizationId, ...ELIGIBLE_TEACHER, academicRank: null } })
         return n
-          ? { id: "ugc-designation", severity: "low", category: "Data quality", title: "Teachers without a designation", description: `${plural(n, "teacher")} can't be counted by rank (Professor, Lecturer, …) in UGC staff figures.`, count: n, href: "/dashboard/teachers" }
+          ? { id: "ugc-rank", severity: "low", category: "Data quality", title: "Teachers without an academic rank", description: `${plural(n, "teacher")} can't be counted by rank (Professor, Lecturer, …) in UGC faculty figures.`, count: n, href: "/dashboard/teachers?rank=unrecorded" }
+          : null
+      },
+    },
+    {
+      // UGC doesn't count someone as full-time faculty while they hold a
+      // full-time post elsewhere.
+      permission: "teachers.employment.view",
+      run: async () => {
+        const n = await prisma.teacher.count({ where: { organizationId, ...ELIGIBLE_TEACHER, employmentType: "FULL_TIME", fullTimeElsewhere: true } })
+        return n
+          ? { id: "faculty-full-time-elsewhere", severity: "high", category: "Faculty", title: "Full-time faculty with a full-time job elsewhere", description: `${plural(n, "full-time teacher")} recorded as also holding a full-time post at another institution; UGC doesn't accept this for full-time faculty.`, count: n, href: "/dashboard/teachers?type=FULL_TIME&otherJob=yes" }
           : null
       },
     },

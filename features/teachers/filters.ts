@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import {
+  AcademicRank,
   QualificationLevel,
   TeacherEmploymentStatus,
   TeacherEmploymentType,
@@ -42,7 +43,11 @@ export const teacherFiltersSchema = z.object({
   status: csvEnum(TeacherEmploymentStatus),
   type: csvEnum(TeacherEmploymentType),
   designation: uuid,
+  // A rank, or "unrecorded" for teachers without one.
+  rank: z.union([z.enum(AcademicRank), z.literal("unrecorded")]).optional().catch(undefined),
   department: uuid,
+  // Recorded as holding a full-time job at another institution.
+  otherJob: z.enum(["yes", "no", "unrecorded"]).optional().catch(undefined),
   joinedFrom: date,
   joinedTo: date,
   contractEndFrom: date,
@@ -97,7 +102,7 @@ export const TEACHER_DEPENDENT_FILTERS: Record<string, readonly string[]> = {
 }
 
 export const TEACHER_FILTER_KEYS = [
-  "status", "type", "designation", "department", "joinedFrom", "joinedTo", "contractEndFrom", "contractEndTo",
+  "status", "type", "designation", "rank", "department", "otherJob", "joinedFrom", "joinedTo", "contractEndFrom", "contractEndTo",
   "level", "program", "class", "section", "subject", "batch", "assigned",
   "qualLevel", "specialization", "qualVerification", "certification",
   "phone", "email", "qualifications", "documents", "pendingVerification", "incomplete",
