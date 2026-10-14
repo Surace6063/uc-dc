@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Building2Icon, CheckIcon, ChevronsUpDownIcon, PlusIcon } from "lucide-react"
 
 import { useSession } from "@/components/shared/session-provider"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +17,25 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { switchOrganization } from "@/features/organizations/actions"
+
+// The institution's logo, or its initials when none is uploaded.
+export function InstitutionLogo({ name, logoUrl }: { name: string; logoUrl: string | null }) {
+  const initials = name
+    .split(/\s+/)
+    .filter((w) => /^[A-Za-z]/.test(w))
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase()
+  return (
+    <Avatar className="size-8 rounded-lg after:rounded-lg">
+      {logoUrl && <AvatarImage src={logoUrl} alt="" className="rounded-lg object-contain" />}
+      <AvatarFallback className="rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
+        {initials || <Building2Icon className="size-4" />}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
 
 // Shows the current organisation; lets members of several switch between them.
 // The server action verifies membership before changing anything.
@@ -37,9 +57,7 @@ export function OrganizationSwitcher() {
           <DropdownMenuTrigger
             render={<SidebarMenuButton size="lg" className="data-popup-open:bg-sidebar-accent" />}
           >
-            <span className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Building2Icon className="size-4" />
-            </span>
+            <InstitutionLogo name={organization.name} logoUrl={organization.logoUrl} />
             <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
               <span className="truncate font-semibold">
                 {pending ? "Switching…" : organization.name}

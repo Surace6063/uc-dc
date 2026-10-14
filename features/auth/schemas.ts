@@ -28,3 +28,9 @@ export const resetPasswordSchema = z
     message: "Passwords don't match.",
     path: ["confirmPassword"],
   })
+
+// Signed-in password change: the current password is checked first.
+export const changePasswordSchema = z
+  .object({ currentPassword: z.string().min(1, "Enter your current password."), password: newPassword, confirmPassword: z.string() })
+  .refine((data) => data.password === data.confirmPassword, { message: "Passwords don't match.", path: ["confirmPassword"] })
+  .refine((data) => data.password !== data.currentPassword, { message: "Choose a different password from your current one.", path: ["password"] })

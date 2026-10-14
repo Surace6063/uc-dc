@@ -101,6 +101,9 @@ export const PERMISSIONS = {
   "finance.view": "View fees and payments",
   "finance.create": "Create invoices and record payments",
   "finance.update": "Edit invoices and payments",
+  "finance.adjust": "Give discounts, scholarships and waivers, and cancel fees",
+  "finance.reverse": "Reverse payments and void income or expense entries",
+  "finance.reports": "View and export finance reports",
 
   "reports.view": "View reports and analytics",
 
@@ -133,6 +136,7 @@ export const PERMISSIONS = {
   // delete keys when each module is built.
   "quizzes.view": "View quizzes and assessments",
   "communication.view": "Use messaging and announcements",
+  "notices.manage": "Post and manage notices for the whole organisation",
   "events.view": "View events and the calendar",
   "documents.view": "View documents",
   "library.view": "View the library",
@@ -245,6 +249,9 @@ export const DEFAULT_ROLES = [
       "subjects.view",
       "results.view",
       "communication.view",
+      "notices.manage",
+      "finance.adjust",
+      "finance.reports",
       "events.view",
       "documents.view",
       "notifications.view",
@@ -301,6 +308,7 @@ export const DEFAULT_ROLES = [
       "finance.view",
       "finance.create",
       "finance.update",
+      "finance.reports",
       "reports.view",
       "notifications.view",
     ],

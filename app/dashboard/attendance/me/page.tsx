@@ -9,6 +9,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { AttendanceStatusBadge } from "@/features/attendance/components/attendance-nav"
 import { SelfCheckIn } from "@/features/attendance/components/self-check-in"
 import { StudentAttendanceOverviewView } from "@/features/attendance/components/student-overview"
+import { StudentAttendanceHistory } from "@/features/student-portal/components/attendance-history"
 import { formatDay, localTime } from "@/features/attendance/constants"
 import { hasPermission } from "@/lib/authorization/context"
 import { getPageContext } from "@/lib/authorization/page"
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
 // The signed-in user's own attendance: as a student (their linked student
 // profile) and/or as a teacher or staff member (their linked employee
 // profile). Nothing here takes an ID from the request.
-export default async function MyAttendancePage() {
+export default async function MyAttendancePage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const context = await getPageContext()
   if (!hasPermission(context, "attendance.view")) return <AccessDenied />
 
@@ -87,6 +88,7 @@ export default async function MyAttendancePage() {
         <section className="grid gap-3">
           {employee && <h2 className="text-lg font-semibold">As a student</h2>}
           <StudentAttendanceOverviewView data={student} who="You" />
+          <StudentAttendanceHistory context={context} params={await searchParams} />
         </section>
       )}
 

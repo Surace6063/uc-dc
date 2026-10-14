@@ -6,10 +6,9 @@ import {
   ChevronsUpDownIcon,
   LogOutIcon,
   SettingsIcon,
-  UserIcon,
 } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +26,7 @@ import {
 
 import { signOut } from "@/features/auth/actions"
 
-type User = { name: string; email: string }
+type User = { name: string; email: string; avatarUrl?: string | null }
 
 function initials(name: string) {
   return name
@@ -41,6 +40,7 @@ function initials(name: string) {
 export function UserAvatar({ user }: { user: User }) {
   return (
     <Avatar className="rounded-lg after:rounded-lg">
+      {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" className="rounded-lg" />}
       <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
         {initials(user.name)}
       </AvatarFallback>
@@ -85,10 +85,6 @@ export function UserMenuContent({
       </div>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
-        <DropdownMenuItem>
-          <UserIcon />
-          Profile
-        </DropdownMenuItem>
         <DropdownMenuItem render={<Link href="/dashboard/settings" />}>
           <SettingsIcon />
           Settings

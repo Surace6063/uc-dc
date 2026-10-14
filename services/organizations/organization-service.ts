@@ -22,7 +22,7 @@ export type OrganizationInput = {
 // ---------------------------------------------------------------- memberships
 
 const membershipInclude = {
-  organization: { select: { id: true, name: true, slug: true, type: true } },
+  organization: { select: { id: true, name: true, slug: true, type: true, logoUrl: true } },
   role: {
     select: {
       id: true,
@@ -35,7 +35,7 @@ const membershipInclude = {
 
 export type Membership = {
   id: string
-  organization: { id: string; name: string; slug: string; type: OrganizationType }
+  organization: { id: string; name: string; slug: string; type: OrganizationType; logoUrl?: string | null }
   role: { id: string; name: string; slug: string }
   permissions: PermissionKey[]
 }

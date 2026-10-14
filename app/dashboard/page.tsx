@@ -68,6 +68,10 @@ import { loadDashboardScope, studentOverview } from "@/services/dashboard/overvi
 import { managementAlerts, recentActivity } from "@/services/dashboard/alerts-service"
 import { canSeeAll } from "@/services/attendance/access-service"
 import { attendanceOverview, gpaDistribution, passFailByProgram, passRateTrend } from "@/services/dashboard/academic-service"
+import { resolveNavKind } from "@/services/navigation/navigation-service"
+import { TeacherHome } from "@/features/teaching/components/teacher-home"
+import { StudentHome } from "@/features/student-portal/components/student-home"
+import { FinanceHome } from "@/features/finance/components/finance-home"
 import { facultyByDesignation, facultyByRank, facultyQualifications, studentTeacherRatio, studentTeacherRatioTrend } from "@/services/dashboard/faculty-service"
 import { facultyKpis, passRateKpi, studentKpis } from "@/services/dashboard/kpi-service"
 import { getGuardianAccountState } from "@/services/guardians/portal-service"
@@ -99,6 +103,11 @@ const count = (n: number) => n.toLocaleString()
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const context = await getPageContext()
   if (!hasPermission(context, "dashboard.view")) return <AccessDenied />
+  // Same choice as the sidebar: teachers get their own home.
+  const kind = await resolveNavKind(context)
+  if (kind === "teacher") return <TeacherHome context={context} />
+  if (kind === "student") return <StudentHome context={context} />
+  if (kind === "finance") return <FinanceHome context={context} year={(await searchParams).year as string | undefined} />
   const can: Can = (p) => hasPermission(context, p)
 
   const institutional = can("students.view") || can("results.view_all") || can("teachers.view") || canSeeAll(context) || can("finance.view") || can("reports.view")

@@ -22,6 +22,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/authorizati
 import type { Prisma } from "@/lib/generated/prisma/client"
 import type { AddressType, StudentStatus } from "@/lib/generated/prisma/enums"
 import { prisma, type TransactionClient } from "@/lib/prisma"
+import { teacherStudentScope } from "@/services/students/teacher-scope"
 import { isUniqueViolation } from "@/lib/prisma-errors"
 import { removeFiles } from "@/lib/supabase/storage"
 import { toDate } from "@/lib/validation"
@@ -59,6 +60,11 @@ async function findStudent(db: TransactionClient | typeof prisma, ctx: Ctx, id: 
 export async function assertCanViewStudent(ctx: Ctx, studentId: string) {
   const where: Prisma.StudentWhereInput = { id: studentId, organizationId: ctx.organization.id }
   if (!hasPermission(ctx, "students.view")) where.userId = ctx.user.id
+  else {
+    // Teachers: only students in classes they teach (or themselves).
+    const taught = await teacherStudentScope(ctx)
+    if (taught) where.OR = [taught, { userId: ctx.user.id }]
+  }
   const student = await prisma.student.findFirst({ where, select: { id: true } })
   if (!student) throw new NotFoundError("Student not found.")
   return student

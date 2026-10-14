@@ -4,9 +4,10 @@ import type { StudentFilters } from "@/features/students/filters"
 import type { AuthContext } from "@/lib/authorization/context"
 import type { Prisma } from "@/lib/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
+import { teacherStudentScope } from "@/services/students/teacher-scope"
 
 // Permissions are optional: without them, permission-gated filters are ignored.
-type Ctx = Pick<AuthContext, "organization"> & Partial<Pick<AuthContext, "permissions">>
+type Ctx = Pick<AuthContext, "organization"> & Partial<Pick<AuthContext, "permissions" | "user">>
 
 // The academic year a list is scoped to: an explicit year, every year, or
 // (by default) the organisation's current year.
@@ -110,6 +111,10 @@ export async function buildStudentWhere(
   options: { ids?: string[] } = {}
 ): Promise<Prisma.StudentWhereInput> {
   const and: Prisma.StudentWhereInput[] = [{ organizationId: ctx.organization.id }]
+
+  // Teachers: only students in classes they teach.
+  const taught = await teacherStudentScope(ctx)
+  if (taught) and.push(taught)
 
   if (options.ids) and.push({ id: { in: options.ids } })
 
@@ -288,7 +293,8 @@ export async function getStudentStats(ctx: Ctx, yearId: string | null) {
   const inYear: Prisma.StudentWhereInput = yearId
     ? { enrollments: { some: { organizationId, academicYearId: yearId } } }
     : {}
-  const base: Prisma.StudentWhereInput = { organizationId, ...inYear }
+  const taught = await teacherStudentScope(ctx)
+  const base: Prisma.StudentWhereInput = { organizationId, ...inYear, ...(taught && { AND: [taught] }) }
   const current: Prisma.StudentWhereInput = { ...base, archivedAt: null }
 
   const [total, active, male, female, newAdmissions, incomplete, archived, byLevel, levels] = await Promise.all([
@@ -304,6 +310,7 @@ export async function getStudentStats(ctx: Ctx, yearId: string | null) {
             enrollments: {
               some: { organizationId, academicYearId: yearId, enrollmentType: "NEW_ADMISSION" },
             },
+            ...(taught && { AND: [taught] }),
           }
         : { ...current, admissionDate: { gte: yearsAgo(1) } },
     }),
@@ -314,7 +321,7 @@ export async function getStudentStats(ctx: Ctx, yearId: string | null) {
     yearId
       ? prisma.enrollment.groupBy({
           by: ["educationLevelId"],
-          where: { organizationId, academicYearId: yearId, status: "ACTIVE", student: { archivedAt: null } },
+          where: { organizationId, academicYearId: yearId, status: "ACTIVE", student: { archivedAt: null, ...(taught && { AND: [taught] }) } },
           _count: { _all: true },
         })
       : Promise.resolve([]),

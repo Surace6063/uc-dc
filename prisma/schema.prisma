@@ -44,6 +44,10 @@ model User {
   attendanceCorrectionsAsked    AttendanceCorrection[] @relation("AttendanceCorrectionRequestedBy")
   attendanceCorrectionsReviewed AttendanceCorrection[] @relation("AttendanceCorrectionReviewedBy")
 
+  // Teaching workspace
+  noticesAuthored     Notice[]               @relation("NoticeAuthor")
+  submissionsReviewed AssignmentSubmission[] @relation("SubmissionReviewer")
+
   @@map("users")
 }
 
@@ -147,6 +151,24 @@ model Organization {
   studentSubjectResults StudentSubjectResult[]
 
   auditLogs AuditLog[]
+
+  // Teaching workspace
+  timetableSlots        TimetableSlot[]
+  lessonPlans           LessonPlan[]
+  teachingMaterials     TeachingMaterial[]
+  classAssignments      ClassAssignment[]
+  assignmentSubmissions AssignmentSubmission[]
+  notices               Notice[]
+
+  // Finance
+  financeSettings    FinanceSettings?
+  financeCategories  FinanceCategory[]
+  feeStructures      FeeStructure[]
+  studentFees        StudentFee[]
+  feeConcessions     FeeConcession[]
+  payments           Payment[]
+  paymentAllocations PaymentAllocation[]
+  financeEntries     FinanceEntry[]
 
   @@map("organizations")
 }
@@ -316,6 +338,9 @@ model EducationLevel {
   examinations         Examination[]
   resultPolicies       ResultPolicy[]
 
+  // Finance
+  feeStructures FeeStructure[]
+
   @@unique([organizationId, code])
   @@unique([id, organizationId])
   @@index([organizationId, sortOrder])
@@ -348,6 +373,9 @@ model Program {
   curricula          Curriculum[]
   teacherAssignments TeacherAssignment[]
   examinations       Examination[]
+
+  // Finance
+  feeStructures FeeStructure[]
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
@@ -391,6 +419,16 @@ model AcademicClass {
   attendanceSessions  AttendanceSession[]
   examinationSubjects ExaminationSubject[]
 
+  // Teaching workspace
+  timetableSlots    TimetableSlot[]
+  lessonPlans       LessonPlan[]
+  teachingMaterials TeachingMaterial[]
+  classAssignments  ClassAssignment[]
+  notices           Notice[]
+
+  // Finance
+  feeStructures FeeStructure[]
+
   @@unique([id, organizationId])
   // Class names are unique within their level (no program) or program.
   @@unique([educationLevelId, name], map: "academic_classes_level_name_key", where: raw("program_id IS NULL"))
@@ -425,6 +463,13 @@ model Section {
   subjectOfferings   SubjectOfferingSection[]
   attendanceSessions AttendanceSession[]
   marksSheets        MarksSheet[]
+
+  // Teaching workspace
+  timetableSlots    TimetableSlot[]
+  lessonPlans       LessonPlan[]
+  teachingMaterials TeachingMaterial[]
+  classAssignments  ClassAssignment[]
+  notices           Notice[]
 
   @@unique([classId, name])
   @@unique([id, organizationId])
@@ -477,6 +522,16 @@ model AcademicYear {
   subjectOfferings   SubjectOffering[]
   attendanceSessions AttendanceSession[]
   examinations       Examination[]
+
+  // Teaching workspace
+  timetableSlots    TimetableSlot[]
+  lessonPlans       LessonPlan[]
+  teachingMaterials TeachingMaterial[]
+  classAssignments  ClassAssignment[]
+
+  // Finance
+  feeStructures FeeStructure[]
+  studentFees   StudentFee[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -708,6 +763,14 @@ model Student {
   markRemarks      MarkRemark[]
   resultHolds      ResultHold[]
   results          StudentResult[]
+
+  // Teaching workspace
+  assignmentSubmissions AssignmentSubmission[]
+
+  // Finance
+  fees           StudentFee[]
+  feeConcessions FeeConcession[]
+  payments       Payment[]
 
   @@unique([organizationId, admissionNumber])
   @@unique([id, organizationId])
@@ -1207,6 +1270,12 @@ model Subject {
   prerequisites  SubjectPrerequisite[] @relation("SubjectPrerequisites")
   requiredFor    SubjectPrerequisite[] @relation("PrerequisiteOf")
 
+  // Teaching workspace
+  timetableSlots    TimetableSlot[]
+  lessonPlans       LessonPlan[]
+  teachingMaterials TeachingMaterial[]
+  classAssignments  ClassAssignment[]
+
   @@unique([organizationId, code])
   @@unique([id, organizationId])
   @@index([organizationId, educationLevelId, programId])
@@ -1534,6 +1603,12 @@ model Teacher {
   documents         TeacherDocument[]
   assignments       TeacherAssignment[]
   attendance        EmployeeAttendance[]
+
+  // Teaching workspace
+  timetableSlots    TimetableSlot[]
+  lessonPlans       LessonPlan[]
+  teachingMaterials TeachingMaterial[]
+  classAssignments  ClassAssignment[]
 
   @@unique([organizationId, employeeId])
   @@unique([id, organizationId])
@@ -2963,4 +3038,541 @@ model StudentSubjectResult {
   @@unique([resultId, examinationSubjectId])
   @@index([organizationId, publicationId, subjectId])
   @@map("student_subject_results")
+}
+
+// ================================================================== teaching workspace
+//
+// What teachers plan and share for the classes they teach: the weekly
+// timetable, lesson plans, teaching materials, class assignments (with
+// student submissions) and notices. Every row belongs to one organisation;
+// that a teacher teaches the class and subject is checked in the services
+// against their active teaching assignments.
+
+enum LessonPlanStatus {
+  DRAFT
+  PLANNED
+  DELIVERED
+}
+
+enum MaterialKind {
+  FILE
+  LINK
+}
+
+// DRAFT: only the teacher sees it. PUBLISHED: set for the class. CLOSED:
+// no longer accepting submissions.
+enum ClassAssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+// Late is derived (submitted after the due time), not stored.
+enum SubmissionStatus {
+  SUBMITTED
+  REVIEWED
+  RETURNED
+}
+
+enum NoticeAudience {
+  EVERYONE
+  STAFF
+  STUDENTS
+  PARENTS
+  CLASS
+}
+
+// One recurring weekly period: a class (or one section), optionally a
+// subject and teacher, on a weekday between two local times.
+model TimetableSlot {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  sectionId      String?  @map("section_id") @db.Uuid
+  subjectId      String?  @map("subject_id") @db.Uuid
+  teacherId      String?  @map("teacher_id") @db.Uuid
+  // 0 = Sunday … 6 = Saturday.
+  dayOfWeek      Int      @map("day_of_week")
+  // "HH:MM" local times.
+  startTime      String   @map("start_time")
+  endTime        String   @map("end_time")
+  room           String?
+  note           String?
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear  @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  class        AcademicClass @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  section      Section?      @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  subject      Subject?      @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  teacher      Teacher?      @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@index([organizationId, academicYearId, dayOfWeek])
+  @@index([teacherId, dayOfWeek])
+  @@index([classId, sectionId])
+  @@map("timetable_slots")
+}
+
+model LessonPlan {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  teacherId      String           @map("teacher_id") @db.Uuid
+  academicYearId String           @map("academic_year_id") @db.Uuid
+  classId        String           @map("class_id") @db.Uuid
+  sectionId      String?          @map("section_id") @db.Uuid
+  subjectId      String           @map("subject_id") @db.Uuid
+  title          String
+  // Unit or topic from the curriculum, as the teacher writes it.
+  topic          String?
+  plannedDate    DateTime         @map("planned_date") @db.Date
+  periods        Int              @default(1)
+  objectives     String?
+  activities     String?
+  resources      String?
+  assessment     String?
+  status         LessonPlanStatus @default(DRAFT)
+  // After teaching: what was covered, what to change next time.
+  reflection     String?
+  deliveredOn    DateTime?        @map("delivered_on") @db.Date
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher      Teacher       @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  academicYear AcademicYear  @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  class        AcademicClass @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  section      Section?      @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  subject      Subject       @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@index([organizationId, teacherId, plannedDate])
+  @@index([organizationId, classId, subjectId])
+  @@map("lesson_plans")
+}
+
+// A file (in private storage) or a link a teacher shares with a class.
+model TeachingMaterial {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  teacherId          String       @map("teacher_id") @db.Uuid
+  academicYearId     String       @map("academic_year_id") @db.Uuid
+  classId            String       @map("class_id") @db.Uuid
+  sectionId          String?      @map("section_id") @db.Uuid
+  subjectId          String       @map("subject_id") @db.Uuid
+  title              String
+  description        String?
+  kind               MaterialKind
+  url                String?
+  storagePath        String?      @unique @map("storage_path")
+  fileName           String?      @map("file_name")
+  mimeType           String?      @map("mime_type")
+  sizeBytes          Int?         @map("size_bytes")
+  sharedWithStudents Boolean      @default(true) @map("shared_with_students")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher      Teacher       @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  academicYear AcademicYear  @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  class        AcademicClass @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  section      Section?      @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  subject      Subject       @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@index([organizationId, teacherId, createdAt])
+  @@index([organizationId, classId, subjectId])
+  @@map("teaching_materials")
+}
+
+// Homework or coursework set for a class (or one section) in a subject.
+model ClassAssignment {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  teacherId      String                @map("teacher_id") @db.Uuid
+  academicYearId String                @map("academic_year_id") @db.Uuid
+  classId        String                @map("class_id") @db.Uuid
+  sectionId      String?               @map("section_id") @db.Uuid
+  subjectId      String                @map("subject_id") @db.Uuid
+  title          String
+  instructions   String?
+  dueAt          DateTime              @map("due_at")
+  maxMarks       Decimal?              @map("max_marks") @db.Decimal(6, 2)
+  status         ClassAssignmentStatus @default(DRAFT)
+  publishedAt    DateTime?             @map("published_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher      Teacher                @relation(fields: [teacherId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  academicYear AcademicYear           @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  class        AcademicClass          @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  section      Section?               @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  subject      Subject                @relation(fields: [subjectId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  submissions  AssignmentSubmission[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, teacherId, dueAt])
+  @@index([organizationId, classId, status])
+  @@map("class_assignments")
+}
+
+// One student's work on an assignment: submitted online by the student, or
+// recorded by the teacher for work handed in on paper.
+model AssignmentSubmission {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  assignmentId   String           @map("assignment_id") @db.Uuid
+  studentId      String           @map("student_id") @db.Uuid
+  submittedAt    DateTime         @default(now()) @map("submitted_at")
+  content        String?
+  storagePath    String?          @unique @map("storage_path")
+  fileName       String?          @map("file_name")
+  mimeType       String?          @map("mime_type")
+  sizeBytes      Int?             @map("size_bytes")
+  // Set when the teacher recorded it (work handed in on paper).
+  recordedById   String?          @map("recorded_by_id") @db.Uuid
+  status         SubmissionStatus @default(SUBMITTED)
+  marks          Decimal?         @db.Decimal(6, 2)
+  feedback       String?
+  reviewedAt     DateTime?        @map("reviewed_at")
+  reviewedById   String?          @map("reviewed_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment   ClassAssignment @relation(fields: [assignmentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  student      Student         @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  reviewedBy   User?           @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([assignmentId, studentId])
+  @@index([organizationId, status])
+  @@map("assignment_submissions")
+}
+
+// An announcement to the whole organisation, a group (staff, students,
+// parents) or one class or section.
+model Notice {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  title          String
+  body           String
+  audience       NoticeAudience
+  classId        String?        @map("class_id") @db.Uuid
+  sectionId      String?        @map("section_id") @db.Uuid
+  pinned         Boolean        @default(false)
+  publishedAt    DateTime       @default(now()) @map("published_at")
+  expiresAt      DateTime?      @map("expires_at")
+  authorId       String?        @map("author_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class        AcademicClass? @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  section      Section?       @relation(fields: [sectionId, classId], references: [id, classId], onDelete: NoAction)
+  author       User?          @relation("NoticeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, publishedAt])
+  @@index([organizationId, audience])
+  @@map("notices")
+}
+
+// ================================================================== finance
+//
+// Student fees and the institution's income and expenses. Amounts are NPR
+// with paisa (Decimal(12, 2)). Nothing completed is deleted: payments are
+// reversed, fees cancelled, concessions revoked and entries voided, each with
+// who, when and why (and an audit log entry).
+//
+// A student fee's paid amount is always recomputed from its allocations of
+// completed, verified payments; its discount from its active concessions.
+
+enum FinanceCategoryKind {
+  FEE
+  INCOME
+  EXPENSE
+}
+
+enum StudentFeeStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum ConcessionKind {
+  DISCOUNT
+  SCHOLARSHIP
+  WAIVER
+}
+
+// Online methods (eSewa, Khalti, Fonepay) are recorded by staff after they
+// check the provider's merchant dashboard; there is no live gateway yet.
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  ESEWA
+  KHALTI
+  FONEPAY
+  CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  COMPLETED
+  REVERSED
+}
+
+// PENDING: recorded but not yet confirmed (a cheque awaiting clearance, a
+// transfer not yet seen in the bank). Only VERIFIED payments count as paid.
+enum PaymentVerification {
+  VERIFIED
+  PENDING
+}
+
+enum FinanceEntryKind {
+  INCOME
+  EXPENSE
+}
+
+enum FinanceEntryStatus {
+  ACTIVE
+  VOIDED
+}
+
+// Per-organisation receipt numbering.
+model FinanceSettings {
+  organizationId      String   @id @map("organization_id") @db.Uuid
+  receiptPrefix       String   @default("RC-") @map("receipt_prefix")
+  receiptPadding      Int      @default(6) @map("receipt_padding")
+  nextReceiptSequence Int      @default(1) @map("next_receipt_sequence")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("finance_settings")
+}
+
+// Institution-defined categories: fee heads (tuition, admission, exam, …),
+// income sources and expense heads.
+model FinanceCategory {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  kind           FinanceCategoryKind
+  name           String
+  code           String?
+  description    String?
+  isActive       Boolean             @default(true) @map("is_active")
+  sortOrder      Int                 @default(0) @map("sort_order")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  feeStructures FeeStructure[]
+  studentFees   StudentFee[]
+  entries       FinanceEntry[]
+
+  @@unique([organizationId, kind, name])
+  @@unique([id, organizationId])
+  @@map("finance_categories")
+}
+
+// A fee for an academic year, for everyone or for one education level,
+// program or class, optionally split into installments.
+model FeeStructure {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  academicYearId   String   @map("academic_year_id") @db.Uuid
+  categoryId       String   @map("category_id") @db.Uuid
+  name             String
+  description      String?
+  educationLevelId String?  @map("education_level_id") @db.Uuid
+  programId        String?  @map("program_id") @db.Uuid
+  classId          String?  @map("class_id") @db.Uuid
+  amount           Decimal  @db.Decimal(12, 2)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdById      String?  @map("created_by_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear     @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  category       FinanceCategory  @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  educationLevel EducationLevel?  @relation(fields: [educationLevelId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  program        Program?         @relation(fields: [programId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  class          AcademicClass?   @relation(fields: [classId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  installments   FeeInstallment[]
+  studentFees    StudentFee[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, academicYearId])
+  @@map("fee_structures")
+}
+
+// One part of a fee structure with its own due date. Installment amounts add
+// up to the structure's amount.
+model FeeInstallment {
+  id             String   @id @default(uuid()) @db.Uuid
+  feeStructureId String   @map("fee_structure_id") @db.Uuid
+  sequence       Int
+  label          String
+  dueDate        DateTime @map("due_date") @db.Date
+  amount         Decimal  @db.Decimal(12, 2)
+
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+
+  @@unique([feeStructureId, sequence])
+  @@map("fee_installments")
+}
+
+// A fee a student owes: one installment of a structure (sequence 0 when the
+// structure has no installments), or a one-off charge.
+model StudentFee {
+  id                  String           @id @default(uuid()) @db.Uuid
+  organizationId      String           @map("organization_id") @db.Uuid
+  studentId           String           @map("student_id") @db.Uuid
+  academicYearId      String           @map("academic_year_id") @db.Uuid
+  categoryId          String           @map("category_id") @db.Uuid
+  feeStructureId      String?          @map("fee_structure_id") @db.Uuid
+  installmentSequence Int?             @map("installment_sequence")
+  title               String
+  amount              Decimal          @db.Decimal(12, 2)
+  discountAmount      Decimal          @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  paidAmount          Decimal          @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  dueDate             DateTime?        @map("due_date") @db.Date
+  status              StudentFeeStatus @default(UNPAID)
+  note                String?
+  createdById         String?          @map("created_by_id") @db.Uuid
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  cancelledAt         DateTime?        @map("cancelled_at")
+  cancelledById       String?          @map("cancelled_by_id") @db.Uuid
+  cancelReason        String?          @map("cancel_reason")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student             @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  academicYear AcademicYear        @relation(fields: [academicYearId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  category     FinanceCategory     @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  feeStructure FeeStructure?       @relation(fields: [feeStructureId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  concessions  FeeConcession[]
+  allocations  PaymentAllocation[]
+
+  @@unique([studentId, feeStructureId, installmentSequence])
+  @@unique([id, organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, academicYearId])
+  @@index([organizationId, dueDate])
+  @@map("student_fees")
+}
+
+// A discount, scholarship or waiver on one student fee.
+model FeeConcession {
+  id                  String               @id @default(uuid()) @db.Uuid
+  organizationId      String               @map("organization_id") @db.Uuid
+  studentFeeId        String               @map("student_fee_id") @db.Uuid
+  studentId           String               @map("student_id") @db.Uuid
+  kind                ConcessionKind
+  scholarshipCategory ScholarshipCategory? @map("scholarship_category")
+  title               String
+  amount              Decimal              @db.Decimal(12, 2)
+  reason              String?
+  approvedById        String?              @map("approved_by_id") @db.Uuid
+  createdAt           DateTime             @default(now()) @map("created_at")
+  revokedAt           DateTime?            @map("revoked_at")
+  revokedById         String?              @map("revoked_by_id") @db.Uuid
+  revokeReason        String?              @map("revoke_reason")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  studentFee   StudentFee   @relation(fields: [studentFeeId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([organizationId, kind])
+  @@index([studentFeeId])
+  @@map("fee_concessions")
+}
+
+// Money received from (or for) a student, with a unique receipt number,
+// split across their fees. Reversed, never deleted.
+model Payment {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @map("organization_id") @db.Uuid
+  studentId          String              @map("student_id") @db.Uuid
+  receiptNumber      String              @map("receipt_number")
+  receivedOn         DateTime            @map("received_on") @db.Date
+  amount             Decimal             @db.Decimal(12, 2)
+  method             PaymentMethod
+  // Provider transaction ID, cheque number or bank reference.
+  reference          String?
+  payerName          String?             @map("payer_name")
+  note               String?
+  verificationStatus PaymentVerification @default(VERIFIED) @map("verification_status")
+  verifiedAt         DateTime?           @map("verified_at")
+  verifiedById       String?             @map("verified_by_id") @db.Uuid
+  status             PaymentStatus       @default(COMPLETED)
+  reversedAt         DateTime?           @map("reversed_at")
+  reversedById       String?             @map("reversed_by_id") @db.Uuid
+  reversalReason     String?             @map("reversal_reason")
+  receivedById       String?             @map("received_by_id") @db.Uuid
+  // Sent with the payment form so a double-click or retry returns the
+  // first receipt instead of recording the payment twice.
+  requestId          String?             @map("request_id") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student             @relation(fields: [studentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  allocations  PaymentAllocation[]
+
+  @@unique([organizationId, receiptNumber])
+  @@unique([organizationId, requestId])
+  @@unique([id, organizationId])
+  @@index([organizationId, receivedOn])
+  @@index([organizationId, status, verificationStatus])
+  @@index([studentId])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  paymentId      String  @map("payment_id") @db.Uuid
+  studentFeeId   String  @map("student_fee_id") @db.Uuid
+  amount         Decimal @db.Decimal(12, 2)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment      Payment      @relation(fields: [paymentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  studentFee   StudentFee   @relation(fields: [studentFeeId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([paymentId, studentFeeId])
+  @@index([studentFeeId])
+  @@map("payment_allocations")
+}
+
+// Other income (grants, donations, …) and expenses (salaries, utilities, …).
+// Voided, never deleted.
+model FinanceEntry {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  kind           FinanceEntryKind
+  categoryId     String             @map("category_id") @db.Uuid
+  entryDate      DateTime           @map("entry_date") @db.Date
+  amount         Decimal            @db.Decimal(12, 2)
+  description    String
+  // Who paid us (income) or whom we paid (expense).
+  party          String?
+  method         PaymentMethod
+  reference      String?
+  status         FinanceEntryStatus @default(ACTIVE)
+  voidedAt       DateTime?          @map("voided_at")
+  voidedById     String?            @map("voided_by_id") @db.Uuid
+  voidReason     String?            @map("void_reason")
+  createdById    String?            @map("created_by_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     FinanceCategory @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: NoAction)
+
+  @@index([organizationId, kind, entryDate])
+  @@map("finance_entries")
 }

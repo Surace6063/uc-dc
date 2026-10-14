@@ -202,3 +202,11 @@
     background: white;
   }
 }
+
+/* Printing (receipts, reports): only the page content. The sidebar and
+   header carry print:hidden; the sidebar's spacer is hidden here. */
+@media print {
+  [data-slot="sidebar-gap"] {
+    display: none;
+  }
+}

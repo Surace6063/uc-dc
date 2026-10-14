@@ -207,6 +207,16 @@ export async function getCurrentAcademicYear(ctx: Pick<AuthContext, "organizatio
   })
 }
 
+// Years for the header's academic-year selector, newest first. Archived
+// years are left out.
+export async function listAcademicYearOptions(ctx: Pick<AuthContext, "organization">) {
+  return prisma.academicYear.findMany({
+    where: { organizationId: ctx.organization.id, status: { not: "ARCHIVED" } },
+    orderBy: { startDate: "desc" },
+    select: { id: true, name: true, isCurrent: true },
+  })
+}
+
 // ------------------------------------------------------------ ownership checks
 
 async function requireLevel(db: Db, ctx: Ctx, id: string, field = "educationLevelId") {
