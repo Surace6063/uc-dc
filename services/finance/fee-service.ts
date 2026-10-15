@@ -120,7 +120,7 @@ async function requireCategory(db: Db, ctx: Ctx, id: string, kind: "FEE" | "INCO
 
 export async function listFeeStructures(ctx: Ctx, academicYearId: string | null) {
   requireFinance(ctx, "staff")
-  return prisma.feeStructure.findMany({
+  const rows = await prisma.feeStructure.findMany({
     where: { organizationId: ctx.organization.id, ...(academicYearId && { academicYearId }) },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
     select: {
@@ -135,6 +135,8 @@ export async function listFeeStructures(ctx: Ctx, academicYearId: string | null)
       _count: { select: { studentFees: { where: { cancelledAt: null } } } },
     },
   })
+  // Decimals can't be passed to client components; rupee strings can.
+  return rows.map((r) => ({ ...r, amount: r.amount.toFixed(2), installments: r.installments.map((i) => ({ ...i, amount: i.amount.toFixed(2) })) }))
 }
 
 export type FeeStructureRow = Awaited<ReturnType<typeof listFeeStructures>>[number]

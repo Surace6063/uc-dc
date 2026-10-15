@@ -107,7 +107,7 @@ export async function listConcessions(ctx: Ctx, filters: ConcessionFilters) {
   return {
     total, yearId,
     byKind: sums.map((s) => ({ kind: s.kind, amount: toPaisa(s._sum.amount), count: s._count._all })),
-    rows: rows.map((r) => ({ ...r, amount: toPaisa(r.amount), feeAmount: toPaisa(r.studentFee.amount), approvedBy: r.approvedById ? (users.get(r.approvedById) ?? null) : null })),
+    rows: rows.map((r) => ({ ...r, amount: toPaisa(r.amount), studentFee: { title: r.studentFee.title }, feeAmount: toPaisa(r.studentFee.amount), approvedBy: r.approvedById ? (users.get(r.approvedById) ?? null) : null })),
   }
 }
 

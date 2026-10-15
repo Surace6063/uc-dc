@@ -101,10 +101,11 @@ export async function studentAccount(ctx: Ctx, studentId: string) {
     }),
   ])
   const today = localDate()
-  const rows = fees.map((f) => {
+  // Decimals become paisa numbers (client components only take plain values).
+  const rows = fees.map(({ discountAmount, paidAmount, ...f }) => {
     const amount = toPaisa(f.amount)
-    const discount = toPaisa(f.discountAmount)
-    const paid = toPaisa(f.paidAmount)
+    const discount = toPaisa(discountAmount)
+    const paid = toPaisa(paidAmount)
     const balance = f.status === "CANCELLED" ? 0 : amount - discount - paid
     return {
       ...f,
@@ -386,18 +387,20 @@ async function loadReceipt(ctx: Ctx, where: Prisma.PaymentWhereInput) {
     },
   })
   if (!p) throw new NotFoundError("Receipt not found.")
+  // The allocations (Decimals) are returned as plain `lines` below.
+  const { allocations, ...payment } = p
   const [org, users, balance] = await Promise.all([
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, logoUrl: true } }),
     userNames([p.receivedById, p.verifiedById]),
     prisma.studentFee.aggregate({ where: { organizationId, studentId: p.student.id, status: { in: ["UNPAID", "PARTIAL"] } }, _sum: { amount: true, discountAmount: true, paidAmount: true } }),
   ])
   return {
-    ...p,
+    ...payment,
     amount: toPaisa(p.amount),
     organization: org,
     studentName: fullName(p.student),
     enrollment: p.student.enrollments[0] ?? null,
-    lines: p.allocations.map((a) => ({ title: a.studentFee.title, category: a.studentFee.category.name, amount: toPaisa(a.amount) })),
+    lines: allocations.map((a) => ({ title: a.studentFee.title, category: a.studentFee.category.name, amount: toPaisa(a.amount) })),
     receivedBy: p.receivedById ? (users.get(p.receivedById) ?? null) : null,
     verifiedBy: p.verifiedById ? (users.get(p.verifiedById) ?? null) : null,
     balanceAfter: toPaisa(balance._sum.amount) - toPaisa(balance._sum.discountAmount) - toPaisa(balance._sum.paidAmount),
