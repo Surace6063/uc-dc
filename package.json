@@ -22,6 +22,7 @@
     "db:seed:teachers": "tsx --conditions=react-server --env-file=.env.local prisma/seed-teachers.ts",
     "db:seed:staff": "tsx --conditions=react-server --env-file=.env.local prisma/seed-staff.ts",
     "db:seed:finance": "tsx --conditions=react-server --env-file=.env.local prisma/seed-finance.ts",
+    "db:seed:teaching": "tsx --conditions=react-server --env-file=.env.local prisma/seed-teaching.ts",
     "db:deploy": "prisma migrate deploy"
   },
   "dependencies": {
